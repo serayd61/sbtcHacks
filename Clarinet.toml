@@ -1,0 +1,38 @@
+[project]
+name = "sbtcHacks"
+description = "sBTC Covered Call Options Vault - BUIDL BATTLE #2"
+authors = []
+telemetry = true
+cache_dir = "./.cache"
+
+[contracts.sip-010-trait]
+path = "contracts/sip-010-trait.clar"
+clarity_version = 2
+epoch = "2.5"
+
+[contracts.mock-sbtc]
+path = "contracts/mock-sbtc.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
+[contracts.price-oracle]
+path = "contracts/price-oracle.clar"
+clarity_version = 2
+epoch = "2.5"
+
+[contracts.sbtc-options-vault]
+path = "contracts/sbtc-options-vault.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc"]
+
+[contracts.options-market]
+path = "contracts/options-market.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "sbtc-options-vault"]
+
+[repl.analysis]
+passes = ["check_checker"]
+check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
