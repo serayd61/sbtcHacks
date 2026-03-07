@@ -112,12 +112,14 @@
 
 ;; Withdraw sBTC by burning shares
 (define-public (withdraw (token <sip-010-token>) (shares uint))
-  (begin
+  (let (
+    (user tx-sender)
+  )
     (asserts! (> shares u0) ERR-ZERO-AMOUNT)
     (asserts! (not (var-get active-epoch)) ERR-EPOCH-ACTIVE)
 
     (let (
-      (user-share-balance (default-to u0 (map-get? user-shares tx-sender)))
+      (user-share-balance (default-to u0 (map-get? user-shares user)))
       (current-total-shares (var-get total-shares))
       (current-total-sbtc (var-get total-sbtc-deposited))
     )
@@ -128,12 +130,12 @@
         (sbtc-amount (/ (* shares current-total-sbtc) current-total-shares))
       )
         ;; Transfer sBTC from vault to user
-        (try! (as-contract (contract-call? token transfer sbtc-amount tx-sender (get-user) none)))
+        (try! (as-contract (contract-call? token transfer sbtc-amount tx-sender user none)))
 
         ;; Update state
         (var-set total-shares (- current-total-shares shares))
         (var-set total-sbtc-deposited (- current-total-sbtc sbtc-amount))
-        (map-set user-shares tx-sender (- user-share-balance shares))
+        (map-set user-shares user (- user-share-balance shares))
 
         (print {
           event: "withdraw",
@@ -195,7 +197,7 @@
 ;; Called by market contract when option is sold
 (define-public (record-option-sale (epoch-id uint) (premium uint))
   (begin
-    (asserts! (is-eq tx-sender (var-get market-contract)) ERR-NOT-MARKET)
+    (asserts! (is-eq contract-caller (var-get market-contract)) ERR-NOT-MARKET)
     (let (
       (epoch (unwrap! (map-get? epochs epoch-id) ERR-INVALID-EPOCH))
     )
@@ -287,11 +289,6 @@
     (asserts! (> amount u0) ERR-ZERO-AMOUNT)
     (as-contract (contract-call? token transfer amount tx-sender recipient none))
   )
-)
-
-;; Helper: get the tx-sender outside as-contract
-(define-private (get-user)
-  tx-sender
 )
 
 ;; Read-only functions
