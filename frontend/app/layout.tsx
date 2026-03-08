@@ -25,20 +25,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className="dark">
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if (typeof globalThis.Buffer === 'undefined') {
-                globalThis.Buffer = { isBuffer: function() { return false; }, from: function() { return []; }, alloc: function() { return []; } };
-              }
-              if (typeof globalThis.process === 'undefined') {
-                globalThis.process = { env: {}, version: '', browser: true };
-              }
-            `,
-          }}
-        />
-      </head>
+      <head />
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-black text-white min-h-screen`}
       >
