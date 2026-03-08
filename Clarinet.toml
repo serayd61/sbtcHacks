@@ -33,6 +33,29 @@ clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait", "mock-sbtc", "sbtc-options-vault"]
 
+# V2 Contracts (Phase 1 - Security Hardening)
+[contracts.vault-data-v1]
+path = "contracts/vault-data-v1.clar"
+clarity_version = 2
+epoch = "2.5"
+
+[contracts.vault-logic-v2]
+path = "contracts/vault-logic-v2.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-data-v1"]
+
+[contracts.options-market-v2]
+path = "contracts/options-market-v2.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
+
+[contracts.admin-multisig]
+path = "contracts/admin-multisig.clar"
+clarity_version = 2
+epoch = "2.5"
+
 [repl.analysis]
 passes = ["check_checker"]
 check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
