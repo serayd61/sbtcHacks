@@ -19,7 +19,7 @@ export default function WalletConnect({
         icon: "/btc-icon.png",
       },
       onFinish: (data) => {
-        const addr = data.userSession.loadUserData().profile.stxAddress.testnet;
+        const addr = data.userSession.loadUserData().profile.stxAddress.mainnet;
         setAddress(addr);
         localStorage.setItem("stx-address", addr);
       },

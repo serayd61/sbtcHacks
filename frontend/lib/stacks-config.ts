@@ -1,12 +1,10 @@
 import { STACKS_TESTNET, STACKS_MAINNET } from "@stacks/network";
 
-export const IS_MAINNET = false;
+export const IS_MAINNET = true;
 
 export const network = IS_MAINNET ? STACKS_MAINNET : STACKS_TESTNET;
 
-export const DEPLOYER_ADDRESS =
-  process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS ||
-  "ST387HJN7F2HR9KQ4250YGFCA4815T1F9X54ZJDDN";
+export const DEPLOYER_ADDRESS = "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W";
 
 export const CONTRACTS = {
   MOCK_SBTC: {
