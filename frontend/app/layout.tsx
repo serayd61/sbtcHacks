@@ -16,6 +16,10 @@ export const metadata: Metadata = {
   title: "sBTC Options Vault | Covered Call Yield on Bitcoin",
   description:
     "Earn yield on your sBTC through automated covered call options. The first options vault on Stacks/Bitcoin.",
+  other: {
+    "talentapp:project_verification":
+      "c0b7f328f613c2a3bc4229784989e0ce926f9610c2e81670b38fad86aac75a7fe29d1aacb32221163fb2b51c208a30ce520be1ff715786b11ef9ceb56b905400",
+  },
 };
 
 export default function RootLayout({
