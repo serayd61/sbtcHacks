@@ -10,6 +10,7 @@ import {
 import { buildBuyOptionTx, buildClaimPayoutTx } from "@/lib/vault-calls";
 import { CONTRACTS, DEPLOYER_ADDRESS, formatSBTC, formatUSD, network } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
+import { withRetry } from "@/lib/retry";
 import type { Listing } from "@/lib/types";
 
 interface BuyOptionProps {
@@ -32,41 +33,49 @@ export default function BuyOption({
     async function loadListings() {
       setLoading(true);
       try {
-        const countResult = await fetchCallReadOnlyFunction({
-          contractAddress: CONTRACTS.MARKET.address,
-          contractName: CONTRACTS.MARKET.name,
-          functionName: "get-listing-count",
-          functionArgs: [],
-          network,
-          senderAddress: DEPLOYER_ADDRESS,
-        });
+        const countResult = await withRetry(() =>
+          fetchCallReadOnlyFunction({
+            contractAddress: CONTRACTS.MARKET.address,
+            contractName: CONTRACTS.MARKET.name,
+            functionName: "get-listing-count",
+            functionArgs: [],
+            network,
+            senderAddress: DEPLOYER_ADDRESS,
+          })
+        );
         const count = Number(cvToJSON(countResult).value);
 
         const items: (Listing & { id: number })[] = [];
         for (let i = 1; i <= count; i++) {
-          const result = await fetchCallReadOnlyFunction({
-            contractAddress: CONTRACTS.MARKET.address,
-            contractName: CONTRACTS.MARKET.name,
-            functionName: "get-listing",
-            functionArgs: [uintCV(i)],
-            network,
-            senderAddress: DEPLOYER_ADDRESS,
-          });
-          const json = cvToJSON(result);
-          if (json.value) {
-            const v = json.value;
-            items.push({
-              id: i,
-              epochId: BigInt(v["epoch-id"].value),
-              strikePrice: BigInt(v["strike-price"].value),
-              premium: BigInt(v.premium.value),
-              collateral: BigInt(v.collateral.value),
-              expiryBlock: BigInt(v["expiry-block"].value),
-              sold: v.sold.value,
-              buyer: v.buyer.value?.value || null,
-              createdBlock: BigInt(v["created-block"].value),
-              claimed: v.claimed.value,
-            });
+          try {
+            const result = await withRetry(() =>
+              fetchCallReadOnlyFunction({
+                contractAddress: CONTRACTS.MARKET.address,
+                contractName: CONTRACTS.MARKET.name,
+                functionName: "get-listing",
+                functionArgs: [uintCV(i)],
+                network,
+                senderAddress: DEPLOYER_ADDRESS,
+              })
+            );
+            const json = cvToJSON(result);
+            if (json.value) {
+              const v = json.value;
+              items.push({
+                id: i,
+                epochId: BigInt(v["epoch-id"].value),
+                strikePrice: BigInt(v["strike-price"].value),
+                premium: BigInt(v.premium.value),
+                collateral: BigInt(v.collateral.value),
+                expiryBlock: BigInt(v["expiry-block"].value),
+                sold: v.sold.value,
+                buyer: v.buyer.value?.value || null,
+                createdBlock: BigInt(v["created-block"].value),
+                claimed: v.claimed.value,
+              });
+            }
+          } catch {
+            // Skip failed individual listing fetches
           }
         }
         setListings(items);
@@ -187,7 +196,7 @@ export default function BuyOption({
                   {listing.sold ? (listing.claimed ? "Settled" : "Sold") : "Available"}
                 </span>
               </div>
-              <div className="grid grid-cols-3 gap-2 text-sm mb-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-sm mb-3">
                 <div>
                   <p className="text-gray-500 text-xs">Premium</p>
                   <p className="text-white font-medium">{formatSBTC(listing.premium)} sBTC</p>
@@ -205,7 +214,7 @@ export default function BuyOption({
                 <button
                   onClick={() => handleBuy(listing)}
                   disabled={pendingId === listing.id}
-                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
                 >
                   {pendingId === listing.id ? (
                     <><Spinner /> Confirming...</>
@@ -218,7 +227,7 @@ export default function BuyOption({
                 <button
                   onClick={() => handleClaim(listing.id)}
                   disabled={pendingId === listing.id}
-                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2"
+                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
                 >
                   {pendingId === listing.id ? (
                     <><Spinner /> Confirming...</>

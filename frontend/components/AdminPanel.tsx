@@ -129,7 +129,7 @@ export default function AdminPanel({ address, onTxComplete }: AdminPanelProps) {
                   type="number"
                   value={btcPrice}
                   onChange={(e) => setBtcPrice(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-7 pr-3 py-2 text-white text-sm focus:outline-none focus:border-yellow-500"
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-7 pr-3 py-2.5 text-white text-sm focus:outline-none focus:border-yellow-500 min-h-[44px]"
                   placeholder="85000"
                 />
               </div>
@@ -141,21 +141,21 @@ export default function AdminPanel({ address, onTxComplete }: AdminPanelProps) {
 
           {/* Start Epoch */}
           <AdminSection title="2. Start Epoch" color="blue">
-            <div className="grid grid-cols-3 gap-2 mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mb-2">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Strike ($)</label>
                 <input type="number" value={strikePrice} onChange={(e) => setStrikePrice(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 min-h-[44px]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Premium (sBTC)</label>
                 <input type="number" value={premium} onChange={(e) => setPremium(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 min-h-[44px]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Duration</label>
                 <input type="number" value={duration} onChange={(e) => setDuration(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-blue-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-blue-500 min-h-[44px]" />
               </div>
             </div>
             <ActionButton onClick={handleStartEpoch} disabled={!address} loading={pending === "startEpoch"} color="blue" full>
@@ -165,26 +165,26 @@ export default function AdminPanel({ address, onTxComplete }: AdminPanelProps) {
 
           {/* Create Listing */}
           <AdminSection title="3. Create Option Listing" color="purple">
-            <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Epoch ID</label>
                 <input type="number" value={epochId} onChange={(e) => setEpochId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500 min-h-[44px]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Premium (sBTC)</label>
                 <input type="number" value={listingPremium} onChange={(e) => setListingPremium(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500 min-h-[44px]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Collateral (sBTC)</label>
                 <input type="number" value={collateral} onChange={(e) => setCollateral(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500 min-h-[44px]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Expiry (blocks)</label>
                 <input type="number" value={expiryBlocks} onChange={(e) => setExpiryBlocks(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-purple-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-purple-500 min-h-[44px]" />
               </div>
             </div>
             <ActionButton onClick={handleCreateListing} disabled={!address} loading={pending === "createListing"} color="purple" full>
@@ -194,16 +194,16 @@ export default function AdminPanel({ address, onTxComplete }: AdminPanelProps) {
 
           {/* Settle Epoch */}
           <AdminSection title="4. Settle Epoch" color="red">
-            <div className="grid grid-cols-2 gap-2 mb-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-2">
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Epoch ID</label>
                 <input type="number" value={settleEpochId} onChange={(e) => setSettleEpochId(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 min-h-[44px]" />
               </div>
               <div>
                 <label className="text-xs text-gray-500 mb-1 block">Settlement Price ($)</label>
                 <input type="number" value={settlementPrice} onChange={(e) => setSettlementPrice(e.target.value)}
-                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-white text-sm focus:outline-none focus:border-red-500" />
+                  className="w-full bg-gray-800 border border-gray-700 rounded-lg px-3 py-2.5 text-white text-sm focus:outline-none focus:border-red-500 min-h-[44px]" />
               </div>
             </div>
             <ActionButton onClick={handleSettleEpoch} disabled={!address} loading={pending === "settleEpoch"} color="red" full>
@@ -256,7 +256,7 @@ function ActionButton({
     <button
       onClick={onClick}
       disabled={disabled || loading}
-      className={`${full ? "w-full" : ""} ${colorMap[color] || "bg-gray-600"} disabled:bg-gray-700 disabled:text-gray-500 text-white px-4 py-2 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2`}
+      className={`${full ? "w-full" : ""} ${colorMap[color] || "bg-gray-600"} disabled:bg-gray-700 disabled:text-gray-500 text-white px-4 py-2.5 rounded-lg text-sm font-semibold transition-colors flex items-center justify-center gap-2 min-h-[44px]`}
     >
       {loading && (
         <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">

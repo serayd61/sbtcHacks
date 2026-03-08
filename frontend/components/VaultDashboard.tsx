@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { getVaultInfo, getUserInfo, getOracleInfo } from "@/lib/vault-calls";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
 import type { VaultInfo, UserInfo, OracleInfo } from "@/lib/types";
+import { withRetry } from "@/lib/retry";
 
 interface VaultDashboardProps {
   address: string | null;
@@ -19,6 +20,7 @@ export default function VaultDashboard({
   const [oracleInfo, setOracleInfo] = useState<OracleInfo | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
     async function load() {
@@ -26,26 +28,26 @@ export default function VaultDashboard({
       setError(null);
       try {
         const [vault, oracle] = await Promise.all([
-          getVaultInfo(),
-          getOracleInfo(),
+          withRetry(() => getVaultInfo()),
+          withRetry(() => getOracleInfo()),
         ]);
         setVaultInfo(vault);
         setOracleInfo(oracle);
 
         if (address) {
-          const user = await getUserInfo(address);
+          const user = await withRetry(() => getUserInfo(address));
           setUserInfo(user);
         } else {
           setUserInfo(null);
         }
       } catch (e) {
         console.error("Failed to load vault info:", e);
-        setError("Failed to connect to Stacks network.");
+        setError("Failed to connect to Stacks network. Retrying failed.");
       }
       setLoading(false);
     }
     load();
-  }, [address, refreshKey]);
+  }, [address, refreshKey, retryCount]);
 
   if (loading) {
     return (
@@ -83,11 +85,19 @@ export default function VaultDashboard({
   if (error) {
     return (
       <div className="bg-red-950/30 rounded-xl p-6 border border-red-500/30">
-        <div className="flex items-center gap-3">
-          <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
-          </svg>
-          <p className="text-sm text-red-400">{error}</p>
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+            <p className="text-sm text-red-400">{error}</p>
+          </div>
+          <button
+            onClick={() => setRetryCount((c) => c + 1)}
+            className="px-3 py-1.5 rounded-lg bg-red-900/30 hover:bg-red-900/50 text-red-400 text-xs font-medium transition-colors min-h-[36px]"
+          >
+            Retry
+          </button>
         </div>
       </div>
     );
