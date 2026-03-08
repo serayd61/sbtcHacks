@@ -1,0 +1,22 @@
+{
+  "name": "sbtc-vault-keeper",
+  "version": "1.0.0",
+  "description": "Keeper bot for sBTC Options Vault — automated epoch management, oracle price submission, and health monitoring",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "npx tsx keeper/index.ts",
+    "price": "npx tsx keeper/price-submitter.ts",
+    "epoch": "npx tsx keeper/epoch-manager.ts",
+    "monitor": "npx tsx keeper/monitor.ts",
+    "dry-run": "npx tsx keeper/index.ts"
+  },
+  "dependencies": {
+    "@stacks/network": "^7.0.0",
+    "@stacks/transactions": "^7.2.0",
+    "tsx": "^4.19.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

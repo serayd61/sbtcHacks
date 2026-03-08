@@ -62,6 +62,13 @@ path = "contracts/admin-multisig.clar"
 clarity_version = 2
 epoch = "2.5"
 
+# Phase 4 - Insurance Fund
+[contracts.insurance-fund]
+path = "contracts/insurance-fund.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
 [repl.analysis]
 passes = ["check_checker"]
 check_checker = { trusted_sender = false, trusted_caller = false, callee_filter = false }
