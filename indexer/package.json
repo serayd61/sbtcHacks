@@ -1,0 +1,16 @@
+{
+  "name": "sbtc-vault-indexer",
+  "version": "1.0.0",
+  "description": "Chainhook event indexer for sBTC Options Vault",
+  "type": "module",
+  "scripts": {
+    "start": "tsx server.ts",
+    "dev": "tsx watch server.ts"
+  },
+  "dependencies": {
+    "tsx": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

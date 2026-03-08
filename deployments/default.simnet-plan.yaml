@@ -73,6 +73,21 @@ plan:
       path: contracts/sip-010-trait.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
+      contract-name: vault-data-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/vault-data-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: governance-token
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/governance-token.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: governance-voting
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/governance-voting.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
       contract-name: insurance-fund
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/insurance-fund.clar
@@ -98,11 +113,6 @@ plan:
       path: contracts/price-oracle-v2.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
-      contract-name: vault-data-v1
-      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-      path: contracts/vault-data-v1.clar
-      clarity-version: 2
-    - transaction-type: emulated-contract-publish
       contract-name: vault-logic-v2
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/vault-logic-v2.clar
@@ -116,5 +126,10 @@ plan:
       contract-name: price-oracle
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/price-oracle.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: vault-strategy-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/vault-strategy-v1.clar
       clarity-version: 2
     epoch: '2.5'

@@ -1,0 +1,115 @@
+{
+  "$schema": "https://raw.githubusercontent.com/hirosystems/chainhook/main/components/chainhook-types-rs/chainhook-types-spec.json",
+  "id": "sbtc-options-vault-indexer",
+  "name": "sBTC Options Vault Event Indexer",
+  "version": "1.0.0",
+  "chain": "stacks",
+  "networks": {
+    "mainnet": {
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      },
+      "start_block": 180000
+    }
+  },
+  "predicates": [
+    {
+      "name": "vault-events",
+      "chain": "stacks",
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      }
+    },
+    {
+      "name": "options-market-events",
+      "chain": "stacks",
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.options-market-v2",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      }
+    },
+    {
+      "name": "oracle-events",
+      "chain": "stacks",
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.price-oracle-v2",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      }
+    },
+    {
+      "name": "insurance-events",
+      "chain": "stacks",
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.insurance-fund",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      }
+    },
+    {
+      "name": "governance-events",
+      "chain": "stacks",
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.governance-token",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      }
+    },
+    {
+      "name": "governance-voting-events",
+      "chain": "stacks",
+      "if_this": {
+        "scope": "print_event",
+        "contract_identifier": "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.governance-voting",
+        "contains": "event"
+      },
+      "then_that": {
+        "http_post": {
+          "url": "http://localhost:3100/api/chainhook",
+          "authorization_header": ""
+        }
+      }
+    }
+  ]
+}
