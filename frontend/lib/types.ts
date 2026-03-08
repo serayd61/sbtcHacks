@@ -7,6 +7,7 @@ export interface VaultInfo {
   sharePrice: bigint;
   totalPremiumsEarned: bigint;
   totalEpochsCompleted: bigint;
+  totalFeesCollected: bigint;
 }
 
 export interface UserInfo {
@@ -52,4 +53,8 @@ export interface OracleInfo {
   currentRound: bigint;
   currentBlock: bigint;
   isStale: boolean;
+  submitterCount: bigint;
+  oraclePaused: boolean;
+  stalenessLimit: bigint;
+  toleranceBps: bigint;
 }

@@ -41,6 +41,7 @@ export async function getVaultInfo(): Promise<VaultInfo> {
     sharePrice: BigInt(v["share-price"].value),
     totalPremiumsEarned: BigInt(v["total-premiums-earned"].value),
     totalEpochsCompleted: BigInt(v["total-epochs-completed"].value),
+    totalFeesCollected: BigInt(v["total-fees-collected"]?.value ?? "0"),
   };
 }
 
@@ -90,6 +91,10 @@ export async function getOracleInfo(): Promise<OracleInfo> {
     currentRound: BigInt(v["current-round"].value),
     currentBlock: BigInt(v["current-block"].value),
     isStale: v["is-stale"].value,
+    submitterCount: BigInt(v["submitter-count"]?.value ?? "0"),
+    oraclePaused: v["oracle-paused"]?.value ?? false,
+    stalenessLimit: BigInt(v["staleness-limit"]?.value ?? "12"),
+    toleranceBps: BigInt(v["tolerance-bps"]?.value ?? "200"),
   };
 }
 
@@ -237,6 +242,61 @@ export function buildSetPriceTx(price: number) {
     contractName: CONTRACTS.ORACLE.name,
     functionName: "set-btc-price",
     functionArgs: [uintCV(price)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// V2: Settle epoch using oracle price (no manual price needed)
+export function buildSettleEpochWithOracleTx(epochId: number) {
+  return {
+    contractAddress: CONTRACTS.VAULT.address,
+    contractName: CONTRACTS.VAULT.name,
+    functionName: "settle-epoch-with-oracle",
+    functionArgs: [
+      contractPrincipalCV(CONTRACTS.MOCK_SBTC.address, CONTRACTS.MOCK_SBTC.name),
+      uintCV(epochId),
+    ],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// V2: Submit price as authorized submitter
+export function buildSubmitPriceTx(price: number) {
+  return {
+    contractAddress: CONTRACTS.ORACLE.address,
+    contractName: CONTRACTS.ORACLE.name,
+    functionName: "submit-price",
+    functionArgs: [uintCV(price)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// V2: Add oracle submitter (admin only)
+export function buildAddSubmitterTx(submitter: string) {
+  return {
+    contractAddress: CONTRACTS.ORACLE.address,
+    contractName: CONTRACTS.ORACLE.name,
+    functionName: "add-submitter",
+    functionArgs: [principalCV(submitter)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// V2: Set vault paused (admin only)
+export function buildSetVaultPausedTx(paused: boolean) {
+  return {
+    contractAddress: CONTRACTS.VAULT.address,
+    contractName: CONTRACTS.VAULT.name,
+    functionName: "set-vault-paused",
+    functionArgs: [paused ? uintCV(1) : uintCV(0)], // Clarity bool representation
     postConditionMode: PostConditionMode.Allow,
     postConditions: [],
     network,

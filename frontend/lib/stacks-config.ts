@@ -6,23 +6,44 @@ export const network = IS_MAINNET ? STACKS_MAINNET : STACKS_TESTNET;
 
 export const DEPLOYER_ADDRESS = "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W";
 
+// Real sBTC on Stacks mainnet (uncomment when ready for production)
+// export const SBTC_CONTRACT_ADDRESS = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4";
+// export const SBTC_CONTRACT_NAME = "sbtc-token";
+// export const SBTC_ASSET_NAME = "sbtc";
+
+// V1 contracts (deployed on mainnet, kept for backward compatibility)
+export const CONTRACTS_V1 = {
+  VAULT: { address: DEPLOYER_ADDRESS, name: "sbtc-options-vault" },
+  MARKET: { address: DEPLOYER_ADDRESS, name: "options-market" },
+  ORACLE: { address: DEPLOYER_ADDRESS, name: "price-oracle" },
+} as const;
+
+// V2 contracts (Phase 1 + Phase 2)
 export const CONTRACTS = {
   MOCK_SBTC: {
     address: DEPLOYER_ADDRESS,
     name: "mock-sbtc",
     assetName: "mock-sbtc",
   },
+  VAULT_DATA: {
+    address: DEPLOYER_ADDRESS,
+    name: "vault-data-v1",
+  },
   VAULT: {
     address: DEPLOYER_ADDRESS,
-    name: "sbtc-options-vault",
+    name: "vault-logic-v2",
   },
   MARKET: {
     address: DEPLOYER_ADDRESS,
-    name: "options-market",
+    name: "options-market-v2",
   },
   ORACLE: {
     address: DEPLOYER_ADDRESS,
-    name: "price-oracle",
+    name: "price-oracle-v2",
+  },
+  MULTISIG: {
+    address: DEPLOYER_ADDRESS,
+    name: "admin-multisig",
   },
 } as const;
 

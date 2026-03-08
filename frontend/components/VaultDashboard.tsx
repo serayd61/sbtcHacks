@@ -140,6 +140,14 @@ export default function VaultDashboard({
                 {oracleInfo ? (oracleInfo.isStale ? "Stale" : "Fresh") : "-"}
               </span>
             </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Submitters</span>
+              <span className="text-sm text-white">{oracleInfo ? oracleInfo.submitterCount.toString() : "0"}</span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Tolerance</span>
+              <span className="text-sm text-white">{oracleInfo ? `${Number(oracleInfo.toleranceBps) / 100}%` : "-"}</span>
+            </div>
           </div>
         </div>
 
@@ -154,6 +162,12 @@ export default function VaultDashboard({
               <span className="text-sm text-gray-500">Premiums Earned</span>
               <span className="text-sm text-green-400 font-medium">
                 {vaultInfo ? `${(Number(vaultInfo.totalPremiumsEarned) / ONE_SBTC).toFixed(4)} sBTC` : "0 sBTC"}
+              </span>
+            </div>
+            <div className="flex justify-between items-center">
+              <span className="text-sm text-gray-500">Fees Collected</span>
+              <span className="text-sm text-yellow-400 font-medium">
+                {vaultInfo ? `${(Number(vaultInfo.totalFeesCollected) / ONE_SBTC).toFixed(4)} sBTC` : "0 sBTC"}
               </span>
             </div>
             <div className="flex justify-between items-center">

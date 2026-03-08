@@ -413,3 +413,211 @@ describe("V2 Access Control", () => {
     expect(result.result).toBeErr(Cl.uint(3006)); // ERR-EPOCH-NOT-EXPIRED
   });
 });
+
+// ============================================
+// ORACLE V2
+// ============================================
+describe("Price Oracle v2", () => {
+  it("should allow owner to add a submitter", () => {
+    const result = simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    expect(result.result).toBeOk(Cl.bool(true));
+
+    // Verify submitter status
+    const isSub = simnet.callReadOnlyFn("price-oracle-v2", "is-submitter",
+      [Cl.principal(wallet1)], deployer);
+    expect(isSub.result).toBeBool(true);
+  });
+
+  it("should reject non-owner adding submitter", () => {
+    const result = simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet2)], wallet1);
+    expect(result.result).toBeErr(Cl.uint(7000)); // ERR-NOT-AUTHORIZED
+  });
+
+  it("should allow submitter to submit price", () => {
+    // Add wallet1 as submitter
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+
+    // Submit price: BTC = $85,000
+    const result = simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet1);
+    expect(result.result).toBeOk(Cl.uint(85000_000000n));
+
+    // Verify stored price
+    const price = simnet.callReadOnlyFn("price-oracle-v2", "get-btc-price-unchecked", [], deployer);
+    expect(price.result).toBeUint(85000_000000n);
+  });
+
+  it("should reject non-submitter price submission", () => {
+    const result = simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet2);
+    expect(result.result).toBeErr(Cl.uint(7001)); // ERR-NOT-SUBMITTER
+  });
+
+  it("should reject price deviating more than 2%", () => {
+    // Add submitter and set initial price
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet1);
+
+    // Try to submit 5% higher price ($89,250)
+    const result = simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(89250_000000n)], wallet1);
+    expect(result.result).toBeErr(Cl.uint(7004)); // ERR-PRICE-DEVIATION
+  });
+
+  it("should accept price within 2% tolerance", () => {
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet1);
+
+    // Submit 1.5% higher price ($86,275) - within tolerance
+    const result = simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(86275_000000n)], wallet1);
+    expect(result.result).toBeOk(Cl.uint(86275_000000n));
+  });
+
+  it("should allow admin direct price set", () => {
+    const result = simnet.callPublicFn("price-oracle-v2", "set-btc-price",
+      [Cl.uint(90000_000000n)], deployer);
+    expect(result.result).toBeOk(Cl.uint(90000_000000n));
+  });
+
+  it("should reject duplicate submitter addition", () => {
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+
+    const result = simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    expect(result.result).toBeErr(Cl.uint(7006)); // ERR-ALREADY-SUBMITTER
+  });
+
+  it("should allow removing a submitter", () => {
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+
+    const result = simnet.callPublicFn("price-oracle-v2", "remove-submitter",
+      [Cl.principal(wallet1)], deployer);
+    expect(result.result).toBeOk(Cl.bool(true));
+
+    // Verify no longer submitter
+    const isSub = simnet.callReadOnlyFn("price-oracle-v2", "is-submitter",
+      [Cl.principal(wallet1)], deployer);
+    expect(isSub.result).toBeBool(false);
+  });
+
+  it("should get oracle info with v2 fields", () => {
+    const result = simnet.callReadOnlyFn("price-oracle-v2", "get-oracle-info", [], deployer);
+    expect(result.result.type).toBe(ClarityType.ResponseOk);
+  });
+});
+
+// ============================================
+// SETTLE WITH ORACLE
+// ============================================
+describe("Settle Epoch with Oracle", () => {
+  it("should settle epoch using oracle price (OTM)", () => {
+    setupVault();
+
+    // Setup oracle with price
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet1);
+
+    // Deposit and start epoch
+    simnet.callPublicFn("vault-logic-v2", "deposit",
+      [Cl.principal(MOCK_SBTC), Cl.uint(5n * ONE_SBTC)], wallet1);
+    simnet.callPublicFn("vault-logic-v2", "start-epoch",
+      [Cl.uint(90000_000000n), Cl.uint(5_000000n), Cl.uint(5)], deployer);
+
+    // Mine blocks to expire epoch
+    simnet.mineEmptyBlocks(6);
+
+    // Settle with oracle (BTC=85k < strike=90k -> OTM)
+    const result = simnet.callPublicFn("vault-logic-v2", "settle-epoch-with-oracle",
+      [Cl.principal(MOCK_SBTC), Cl.uint(1)], deployer);
+    expect(result.result).toBeOk(Cl.tuple({
+      outcome: Cl.stringAscii("OTM"),
+      payout: Cl.uint(0),
+      fees: Cl.uint(10_000000n) // 2% of 5 sBTC = 0.1 sBTC = 10,000,000 sats
+    }));
+  });
+
+  it("should settle epoch using oracle price (ITM)", () => {
+    setupVault();
+
+    // Deposit
+    simnet.callPublicFn("vault-logic-v2", "deposit",
+      [Cl.principal(MOCK_SBTC), Cl.uint(5n * ONE_SBTC)], wallet1);
+
+    // Start epoch with strike = $80,000
+    simnet.callPublicFn("vault-logic-v2", "start-epoch",
+      [Cl.uint(80000_000000n), Cl.uint(5_000000n), Cl.uint(5)], deployer);
+
+    // Set oracle price to $85,000 (ITM: 85k > 80k)
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet1);
+
+    // Mine blocks
+    simnet.mineEmptyBlocks(6);
+
+    // Settle with oracle
+    const result = simnet.callPublicFn("vault-logic-v2", "settle-epoch-with-oracle",
+      [Cl.principal(MOCK_SBTC), Cl.uint(1)], deployer);
+    expect(result.result.type).toBe(ClarityType.ResponseOk);
+
+    // Verify outcome is ITM
+    const epoch = simnet.callReadOnlyFn("vault-logic-v2", "get-epoch", [Cl.uint(1)], deployer);
+    expect(epoch.result.type).toBe(ClarityType.OptionalSome);
+  });
+
+  it("should reject oracle settlement when oracle is stale", () => {
+    setupVault();
+
+    // Set oracle price but don't update it
+    simnet.callPublicFn("price-oracle-v2", "set-btc-price",
+      [Cl.uint(85000_000000n)], deployer);
+
+    // Deposit and start epoch
+    simnet.callPublicFn("vault-logic-v2", "deposit",
+      [Cl.principal(MOCK_SBTC), Cl.uint(5n * ONE_SBTC)], wallet1);
+    simnet.callPublicFn("vault-logic-v2", "start-epoch",
+      [Cl.uint(90000_000000n), Cl.uint(5_000000n), Cl.uint(5)], deployer);
+
+    // Mine enough blocks to make oracle stale (12+5 to also expire epoch)
+    simnet.mineEmptyBlocks(20);
+
+    // Try settle - should fail because oracle is stale
+    const result = simnet.callPublicFn("vault-logic-v2", "settle-epoch-with-oracle",
+      [Cl.principal(MOCK_SBTC), Cl.uint(1)], deployer);
+    expect(result.result).toBeErr(Cl.uint(3013)); // ERR-INVALID-SETTLEMENT-PRICE (oracle stale)
+  });
+
+  it("should reject oracle settlement before epoch expiry", () => {
+    setupVault();
+
+    // Fresh oracle price
+    simnet.callPublicFn("price-oracle-v2", "add-submitter",
+      [Cl.principal(wallet1)], deployer);
+    simnet.callPublicFn("price-oracle-v2", "submit-price",
+      [Cl.uint(85000_000000n)], wallet1);
+
+    // Deposit and start epoch with long duration
+    simnet.callPublicFn("vault-logic-v2", "deposit",
+      [Cl.principal(MOCK_SBTC), Cl.uint(5n * ONE_SBTC)], wallet1);
+    simnet.callPublicFn("vault-logic-v2", "start-epoch",
+      [Cl.uint(90000_000000n), Cl.uint(5_000000n), Cl.uint(100)], deployer);
+
+    // Try settle immediately - should fail
+    const result = simnet.callPublicFn("vault-logic-v2", "settle-epoch-with-oracle",
+      [Cl.principal(MOCK_SBTC), Cl.uint(1)], deployer);
+    expect(result.result).toBeErr(Cl.uint(3006)); // ERR-EPOCH-NOT-EXPIRED
+  });
+});

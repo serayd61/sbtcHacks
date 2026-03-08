@@ -39,11 +39,17 @@ path = "contracts/vault-data-v1.clar"
 clarity_version = 2
 epoch = "2.5"
 
+# Phase 2 - Oracle v2
+[contracts.price-oracle-v2]
+path = "contracts/price-oracle-v2.clar"
+clarity_version = 2
+epoch = "2.5"
+
 [contracts.vault-logic-v2]
 path = "contracts/vault-logic-v2.clar"
 clarity_version = 2
 epoch = "2.5"
-depends_on = ["sip-010-trait", "mock-sbtc", "vault-data-v1"]
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-data-v1", "price-oracle-v2"]
 
 [contracts.options-market-v2]
 path = "contracts/options-market-v2.clar"

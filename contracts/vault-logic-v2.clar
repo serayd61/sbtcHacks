@@ -338,6 +338,94 @@
   )
 )
 
+;; Settle epoch using oracle price (auto-fetch from price-oracle-v2)
+;; No manual settlement-price needed - fetches fresh price from oracle
+(define-public (settle-epoch-with-oracle (token <sip-010-token>) (epoch-id uint))
+  (begin
+    (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
+    (asserts! (contract-call? .vault-data-v1 get-active-epoch) ERR-NO-ACTIVE-EPOCH)
+
+    ;; Fetch fresh price from oracle (fails if stale)
+    (let (
+      (oracle-price (unwrap! (contract-call? .price-oracle-v2 get-btc-price) ERR-INVALID-SETTLEMENT-PRICE))
+      (epoch (unwrap! (contract-call? .vault-data-v1 get-epoch epoch-id) ERR-INVALID-EPOCH))
+    )
+      (asserts! (not (get settled epoch)) ERR-ALREADY-SETTLED)
+      (asserts! (>= block-height (get expiry-block epoch)) ERR-EPOCH-NOT-EXPIRED)
+
+      (let (
+        (strike (get strike-price epoch))
+        (collateral (get collateral epoch))
+        (premium-earned (get premium-earned epoch))
+        (current-sbtc (contract-call? .vault-data-v1 get-total-sbtc-deposited))
+        (is-itm (> oracle-price strike))
+        (payout (if is-itm
+          (let (
+            (diff (- oracle-price strike))
+            (raw-payout (/ (* collateral diff) oracle-price))
+          )
+            (if (> raw-payout current-sbtc) current-sbtc
+              (if (> raw-payout collateral) collateral raw-payout)
+            )
+          )
+          u0
+        ))
+        (outcome (if is-itm "ITM" "OTM"))
+      )
+        ;; Fee deduction (same as manual settle)
+        (let (
+          (management-fee (/ (* collateral MANAGEMENT-FEE-BPS) BPS-DENOMINATOR))
+          (performance-fee (if (> premium-earned u0)
+            (/ (* premium-earned PERFORMANCE-FEE-BPS) BPS-DENOMINATOR)
+            u0
+          ))
+          (total-fees (+ management-fee performance-fee))
+          (sbtc-after-payout (if is-itm (- current-sbtc payout) current-sbtc))
+          (safe-fees (if (> total-fees sbtc-after-payout) sbtc-after-payout total-fees))
+        )
+          ;; Transfer fees to treasury
+          (if (> safe-fees u0)
+            (begin
+              (try! (as-contract (contract-call? token transfer safe-fees tx-sender (contract-call? .vault-data-v1 get-treasury-address) none)))
+              (try! (contract-call? .vault-data-v1 set-total-fees-collected
+                (+ (contract-call? .vault-data-v1 get-total-fees-collected) safe-fees)
+              ))
+            )
+            true
+          )
+
+          ;; Update TVL
+          (try! (contract-call? .vault-data-v1 set-total-sbtc-deposited (- sbtc-after-payout safe-fees)))
+
+          ;; Update epoch with oracle price
+          (try! (contract-call? .vault-data-v1 set-epoch epoch-id (merge epoch {
+            settled: true,
+            settlement-price: oracle-price,
+            payout: payout,
+            outcome: outcome
+          })))
+
+          (try! (contract-call? .vault-data-v1 set-active-epoch false))
+          (try! (contract-call? .vault-data-v1 set-total-epochs-completed
+            (+ (contract-call? .vault-data-v1 get-total-epochs-completed) u1)
+          ))
+
+          (print {
+            event: "epoch-settled-oracle",
+            epoch-id: epoch-id,
+            oracle-price: oracle-price,
+            outcome: outcome,
+            payout: payout,
+            fees-collected: safe-fees
+          })
+
+          (ok { outcome: outcome, payout: payout, fees: safe-fees })
+        )
+      )
+    )
+  )
+)
+
 ;; Emergency settle: settle at current price without waiting for expiry (only when paused)
 (define-public (emergency-settle (token <sip-010-token>) (epoch-id uint) (settlement-price uint))
   (begin
