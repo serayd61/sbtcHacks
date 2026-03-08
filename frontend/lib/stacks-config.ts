@@ -4,8 +4,9 @@ export const IS_MAINNET = false;
 
 export const network = IS_MAINNET ? STACKS_MAINNET : STACKS_TESTNET;
 
-// Update these after deploying to testnet
-export const DEPLOYER_ADDRESS = "ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM";
+export const DEPLOYER_ADDRESS =
+  process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS ||
+  "ST387HJN7F2HR9KQ4250YGFCA4815T1F9X54ZJDDN";
 
 export const CONTRACTS = {
   MOCK_SBTC: {

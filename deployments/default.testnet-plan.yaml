@@ -1,0 +1,45 @@
+id: 0
+name: Testnet deployment
+network: testnet
+stacks-node: https://api.testnet.hiro.so
+bitcoin-node: http://blockstack:blockstacksystem@bitcoind.testnet.stacks.co:18332
+plan:
+  batches:
+  - id: 0
+    transactions:
+    - transaction-type: contract-publish
+      contract-name: sip-010-trait
+      expected-sender: ST29E92458SB97MREMVJFBXPVMC3C1S4RCV1GAR91
+      cost: 109413
+      path: contracts/sip-010-trait.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: mock-sbtc
+      expected-sender: ST29E92458SB97MREMVJFBXPVMC3C1S4RCV1GAR91
+      cost: 109520
+      path: contracts/mock-sbtc.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: sbtc-options-vault
+      expected-sender: ST29E92458SB97MREMVJFBXPVMC3C1S4RCV1GAR91
+      cost: 110254
+      path: contracts/sbtc-options-vault.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: options-market
+      expected-sender: ST29E92458SB97MREMVJFBXPVMC3C1S4RCV1GAR91
+      cost: 109878
+      path: contracts/options-market.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: price-oracle
+      expected-sender: ST29E92458SB97MREMVJFBXPVMC3C1S4RCV1GAR91
+      cost: 109538
+      path: contracts/price-oracle.clar
+      anchor-block-only: true
+      clarity-version: 2
+    epoch: '2.5'
