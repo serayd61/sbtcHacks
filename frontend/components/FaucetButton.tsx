@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { openContractCall } from "@stacks/connect";
 import { buildFaucetTx } from "@/lib/vault-calls";
 import { useToast } from "@/components/Toast";
 
@@ -18,6 +17,7 @@ export default function FaucetButton({ address }: FaucetButtonProps) {
     setPending(true);
     try {
       const txOptions = buildFaucetTx();
+      const { openContractCall } = await import("@stacks/connect");
       await openContractCall({
         ...txOptions,
         onFinish: (data) => {

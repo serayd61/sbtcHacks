@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { openContractCall } from "@stacks/connect";
 import {
   fetchCallReadOnlyFunction,
   uintCV,
@@ -60,7 +59,8 @@ export default function BuyOption({
             );
             const json = cvToJSON(result);
             if (json.value) {
-              const v = json.value;
+              // cvToJSON wraps (some (tuple ...)) — unwrap the tuple's value
+              const v = json.value.value || json.value;
               items.push({
                 id: i,
                 epochId: BigInt(v["epoch-id"].value),
@@ -92,6 +92,7 @@ export default function BuyOption({
     setPendingId(listing.id);
     try {
       const txOptions = buildBuyOptionTx(listing.id, Number(listing.premium), address);
+      const { openContractCall } = await import("@stacks/connect");
       await openContractCall({
         ...txOptions,
         onFinish: (data) => {
@@ -111,6 +112,7 @@ export default function BuyOption({
     setPendingId(listingId);
     try {
       const txOptions = buildClaimPayoutTx(listingId);
+      const { openContractCall } = await import("@stacks/connect");
       await openContractCall({
         ...txOptions,
         onFinish: (data) => {

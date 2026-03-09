@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import { openContractCall } from "@stacks/connect";
 import { buildDepositTx, buildWithdrawTx } from "@/lib/vault-calls";
 import { parseSBTC } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
@@ -31,6 +30,7 @@ export default function DepositWithdraw({
     setPending(true);
     try {
       const txOptions = buildDepositTx(amount, address);
+      const { openContractCall } = await import("@stacks/connect");
       await openContractCall({
         ...txOptions,
         onFinish: (data) => {
@@ -56,6 +56,7 @@ export default function DepositWithdraw({
     setPending(true);
     try {
       const txOptions = buildWithdrawTx(shares, address);
+      const { openContractCall } = await import("@stacks/connect");
       await openContractCall({
         ...txOptions,
         onFinish: (data) => {

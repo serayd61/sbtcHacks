@@ -8,6 +8,7 @@ const HIRO_API = IS_MAINNET
 export interface ChainInfo {
   stacksTipHeight: number;
   burnBlockHeight: number;
+  tenureHeight: number;
   serverVersion: string;
   networkId: number;
   peerCount: number;
@@ -38,6 +39,7 @@ export async function getChainInfo(): Promise<ChainInfo> {
     return {
       stacksTipHeight: data.stacks_tip_height,
       burnBlockHeight: data.burn_block_height,
+      tenureHeight: data.tenure_height || data.burn_block_height,
       serverVersion: data.server_version || "",
       networkId: data.network_id || 0,
       peerCount: data.peer_count || 0,

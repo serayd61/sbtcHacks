@@ -1,10 +1,18 @@
 import { STACKS_TESTNET, STACKS_MAINNET } from "@stacks/network";
 
-export const IS_MAINNET = true;
+export const IS_MAINNET =
+  process.env.NEXT_PUBLIC_NETWORK !== "testnet";
 
 export const network = IS_MAINNET ? STACKS_MAINNET : STACKS_TESTNET;
 
-export const DEPLOYER_ADDRESS = "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W";
+export const HIRO_API_URL = IS_MAINNET
+  ? "https://api.mainnet.hiro.so"
+  : "https://api.testnet.hiro.so";
+
+export const DEPLOYER_ADDRESS = (
+  process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS ||
+  "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W"
+).trim();
 
 // Real sBTC on Stacks mainnet (uncomment when ready for production)
 // export const SBTC_CONTRACT_ADDRESS = "SM3VDXK3WZZSA84XXFKAFAF15NNZX32CTSG82JFQ4";
@@ -53,7 +61,10 @@ export const ONE_SBTC = 100_000_000;
 
 export function formatSBTC(sats: number | bigint): string {
   const val = Number(sats) / ONE_SBTC;
-  return val.toFixed(8);
+  // Show up to 4 significant decimals, strip trailing zeros
+  if (val === 0) return "0";
+  if (val >= 1) return val.toFixed(4);
+  return val.toPrecision(4).replace(/\.?0+$/, "");
 }
 
 export function formatUSD(priceRaw: number | bigint): string {

@@ -48,12 +48,12 @@ export default function NetworkStatus() {
         <span className={`w-2 h-2 rounded-full ${statusColors[status]} ${status === "loading" ? "animate-pulse" : ""}`} />
         <span className="text-gray-400 hidden sm:inline">
           {status === "online" && chainInfo
-            ? `Block #${chainInfo.stacksTipHeight.toLocaleString()}`
+            ? `Block #${chainInfo.tenureHeight.toLocaleString()}`
             : statusLabels[status]}
         </span>
         <span className="text-gray-400 sm:hidden">
           {status === "online" && chainInfo
-            ? `#${chainInfo.stacksTipHeight.toLocaleString()}`
+            ? `#${chainInfo.tenureHeight.toLocaleString()}`
             : ""}
         </span>
       </button>
@@ -72,8 +72,9 @@ export default function NetworkStatus() {
 
             {chainInfo ? (
               <div className="space-y-2 text-sm">
-                <InfoRow label="Stacks Block" value={`#${chainInfo.stacksTipHeight.toLocaleString()}`} />
+                <InfoRow label="Tenure (Contract)" value={`#${chainInfo.tenureHeight.toLocaleString()}`} />
                 <InfoRow label="Bitcoin Block" value={`#${chainInfo.burnBlockHeight.toLocaleString()}`} />
+                <InfoRow label="Stacks Block" value={`#${chainInfo.stacksTipHeight.toLocaleString()}`} />
                 {chainInfo.peerCount > 0 && (
                   <InfoRow label="Peers" value={chainInfo.peerCount.toString()} />
                 )}
