@@ -1,31 +1,47 @@
 import {
-  fetchCallReadOnlyFunction,
   uintCV,
   principalCV,
   contractPrincipalCV,
   cvToJSON,
+  serializeCV,
+  deserializeCV,
   Pc,
   PostConditionMode,
 } from "@stacks/transactions";
-import { CONTRACTS, DEPLOYER_ADDRESS, network } from "./stacks-config";
+import { CONTRACTS, DEPLOYER_ADDRESS, HIRO_API_URL, network } from "./stacks-config";
 import type { VaultInfo, UserInfo, Epoch, OracleInfo } from "./types";
 
-// Helper to call read-only functions
+// Direct read-only call using native fetch (bypasses library encoding issues)
 async function readOnly(
   contract: { address: string; name: string },
   functionName: string,
   args: any[] = [],
   sender?: string
 ) {
-  const result = await fetchCallReadOnlyFunction({
-    contractAddress: contract.address,
-    contractName: contract.name,
-    functionName,
-    functionArgs: args,
-    network,
-    senderAddress: sender || DEPLOYER_ADDRESS,
+  const senderAddress = sender || DEPLOYER_ADDRESS;
+  const serializedArgs = args.map((arg) => `0x${serializeCV(arg)}`);
+  const url = `${HIRO_API_URL}/v2/contracts/call-read/${contract.address}/${contract.name}/${encodeURIComponent(functionName)}`;
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ sender: senderAddress, arguments: serializedArgs }),
   });
-  return cvToJSON(result);
+
+  if (!response.ok) {
+    const msg = await response.text().catch(() => "");
+    throw new Error(
+      `Read-only call failed (${response.status}): ${contract.name}.${functionName} — ${msg}`
+    );
+  }
+
+  const json = await response.json();
+  if (!json.okay) {
+    throw new Error(`Clarity error: ${json.cause || JSON.stringify(json)}`);
+  }
+
+  const resultCV = deserializeCV(json.result);
+  return cvToJSON(resultCV);
 }
 
 // Vault read-only calls
@@ -67,7 +83,7 @@ export async function getEpoch(epochId: number): Promise<Epoch | null> {
     uintCV(epochId),
   ]);
   if (result.value === null) return null;
-  const v = result.value;
+  const v = result.value.value || result.value;
   return {
     strikePrice: BigInt(v["strike-price"].value),
     premium: BigInt(v.premium.value),
@@ -148,6 +164,7 @@ export function buildFaucetTx() {
 }
 
 export function buildBuyOptionTx(listingId: number, premium: number, senderAddress: string) {
+  const marketContractId: `${string}.${string}` = `${CONTRACTS.MARKET.address}.${CONTRACTS.MARKET.name}`;
   return {
     contractAddress: CONTRACTS.MARKET.address,
     contractName: CONTRACTS.MARKET.name,
@@ -158,7 +175,10 @@ export function buildBuyOptionTx(listingId: number, premium: number, senderAddre
     ],
     postConditionMode: PostConditionMode.Deny,
     postConditions: [
+      // Buyer sends premium to market contract
       Pc.principal(senderAddress).willSendEq(premium).ft(ftId, ftAsset),
+      // Market contract forwards premium to vault
+      Pc.principal(marketContractId).willSendEq(premium).ft(ftId, ftAsset),
     ],
     network,
   };
@@ -284,6 +304,36 @@ export function buildAddSubmitterTx(submitter: string) {
     contractName: CONTRACTS.ORACLE.name,
     functionName: "add-submitter",
     functionArgs: [principalCV(submitter)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// Setup: Set logic contract on vault-data-v1 (required once after deployment)
+export function buildSetLogicContractTx() {
+  return {
+    contractAddress: CONTRACTS.VAULT_DATA.address,
+    contractName: CONTRACTS.VAULT_DATA.name,
+    functionName: "set-logic-contract",
+    functionArgs: [
+      contractPrincipalCV(CONTRACTS.VAULT.address, CONTRACTS.VAULT.name),
+    ],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// Setup: Set market contract on vault-logic-v2 (required once after deployment)
+export function buildSetMarketContractTx() {
+  return {
+    contractAddress: CONTRACTS.VAULT.address,
+    contractName: CONTRACTS.VAULT.name,
+    functionName: "set-market-contract",
+    functionArgs: [
+      contractPrincipalCV(CONTRACTS.MARKET.address, CONTRACTS.MARKET.name),
+    ],
     postConditionMode: PostConditionMode.Allow,
     postConditions: [],
     network,
