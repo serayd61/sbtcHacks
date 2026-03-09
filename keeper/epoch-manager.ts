@@ -4,16 +4,17 @@
 // Responsibilities:
 // 1. Monitor active epoch expiry
 // 2. Auto-settle expired epochs using oracle price
-// 3. Wait cooldown period
-// 4. Start new epoch with calculated strike price (spot * 1.05)
+// 3. Start new epoch with calculated strike price (spot * 1.05)
+// 4. Create listing on options market for each new epoch
 //
 // Usage:
-//   KEEPER_PRIVATE_KEY=<hex-key> npx ts-node keeper/epoch-manager.ts
+//   KEEPER_PRIVATE_KEY=<hex-key> npx tsx keeper/epoch-manager.ts
 
 import { KEEPER_CONFIG } from "./config";
 import { fetchAllPrices, calculateMedianPrice, priceToOnChain } from "./price-submitter";
 import { calculateCallPremium, formatPricingInfo } from "./pricing";
 import { parseVaultInfo, parseEpochInfo, type ParsedVaultInfo, type ParsedEpochInfo } from "./clarity-parser";
+import { broadcastTx, requirePrivateKey, DEPLOYER } from "./tx-sender";
 
 // ============================================
 // Types
@@ -33,7 +34,6 @@ interface VaultState {
 // ============================================
 
 const API_BASE = KEEPER_CONFIG.stacksApiUrl;
-const DEPLOYER = KEEPER_CONFIG.deployerAddress;
 
 async function callReadOnly(contract: string, fn: string, args: string[] = []): Promise<any> {
   const url = `${API_BASE}/v2/contracts/call-read/${DEPLOYER}/${contract}/${fn}`;
@@ -54,9 +54,11 @@ async function callReadOnly(contract: string, fn: string, args: string[] = []): 
 }
 
 async function getCurrentBlock(): Promise<bigint> {
+  // IMPORTANT: Clarity's `block-height` = tenure_height post-Nakamoto
+  // The vault contract checks expiry against tenure_height, not stacks_tip_height
   const response = await fetch(`${API_BASE}/v2/info`);
   const data = await response.json();
-  return BigInt(data.stacks_tip_height);
+  return BigInt(data.tenure_height);
 }
 
 // ============================================
@@ -120,20 +122,15 @@ function calculateStrikePrice(currentPriceUsd: number): bigint {
 async function settleExpiredEpoch(epochId: bigint): Promise<void> {
   console.log(`\n  Settling epoch #${epochId} with oracle price...`);
 
-  const { makeContractCall, broadcastTransaction, uintCV, contractPrincipalCV, AnchorMode } =
-    await import("@stacks/transactions");
-  const { StacksMainnet, StacksTestnet } = await import("@stacks/network");
+  const { uintCV, contractPrincipalCV, AnchorMode } = await import("@stacks/transactions");
 
-  const privateKey = process.env.KEEPER_PRIVATE_KEY;
+  const privateKey = await requirePrivateKey().catch(() => null);
   if (!privateKey) {
     console.log("  [DRY RUN] Would settle epoch with oracle price");
     return;
   }
 
-  const network =
-    KEEPER_CONFIG.network === "mainnet" ? new StacksMainnet() : new StacksTestnet();
-
-  const txOptions = {
+  const txId = await broadcastTx({
     contractAddress: DEPLOYER,
     contractName: KEEPER_CONFIG.contracts.vaultLogicV2,
     functionName: "settle-epoch-with-oracle",
@@ -142,14 +139,11 @@ async function settleExpiredEpoch(epochId: bigint): Promise<void> {
       uintCV(epochId),
     ],
     senderKey: privateKey,
-    network,
     anchorMode: AnchorMode.Any,
     fee: 10000n,
-  };
+  });
 
-  const tx = await makeContractCall(txOptions);
-  const result = await broadcastTransaction({ transaction: tx, network });
-  console.log(`  Settle TX broadcasted: ${typeof result === "string" ? result : result.txid}`);
+  console.log(`  Settle TX broadcasted: ${txId}`);
 }
 
 async function startNewEpoch(
@@ -162,34 +156,65 @@ async function startNewEpoch(
   console.log(`    Premium: ${Number(premium) / 100_000_000} sBTC`);
   console.log(`    Duration: ${duration} blocks (~${((duration * 10) / 60 / 24).toFixed(1)} days)`);
 
-  const { makeContractCall, broadcastTransaction, uintCV, AnchorMode } = await import(
-    "@stacks/transactions"
-  );
-  const { StacksMainnet, StacksTestnet } = await import("@stacks/network");
+  const { uintCV, AnchorMode } = await import("@stacks/transactions");
 
-  const privateKey = process.env.KEEPER_PRIVATE_KEY;
+  const privateKey = await requirePrivateKey().catch(() => null);
   if (!privateKey) {
     console.log("  [DRY RUN] Would start new epoch");
     return;
   }
 
-  const network =
-    KEEPER_CONFIG.network === "mainnet" ? new StacksMainnet() : new StacksTestnet();
-
-  const txOptions = {
+  const txId = await broadcastTx({
     contractAddress: DEPLOYER,
     contractName: KEEPER_CONFIG.contracts.vaultLogicV2,
     functionName: "start-epoch",
     functionArgs: [uintCV(strikePrice), uintCV(premium), uintCV(duration)],
     senderKey: privateKey,
-    network,
     anchorMode: AnchorMode.Any,
     fee: 10000n,
-  };
+  });
 
-  const tx = await makeContractCall(txOptions);
-  const result = await broadcastTransaction({ transaction: tx, network });
-  console.log(`  Start epoch TX: ${typeof result === "string" ? result : result.txid}`);
+  console.log(`  Start epoch TX: ${txId}`);
+}
+
+async function createListingOnMarket(
+  epochId: bigint,
+  strikePrice: bigint,
+  premium: bigint,
+  collateral: bigint,
+  expiryBlock: bigint
+): Promise<void> {
+  console.log(`\n  Creating market listing for epoch #${epochId}...`);
+  console.log(`    Strike: $${(Number(strikePrice) / 1_000_000).toLocaleString()}`);
+  console.log(`    Premium: ${Number(premium) / 100_000_000} sBTC`);
+  console.log(`    Collateral: ${Number(collateral) / 100_000_000} sBTC`);
+  console.log(`    Expiry block: #${expiryBlock}`);
+
+  const { uintCV, AnchorMode } = await import("@stacks/transactions");
+
+  const privateKey = await requirePrivateKey().catch(() => null);
+  if (!privateKey) {
+    console.log("  [DRY RUN] Would create listing on options-market-v2");
+    return;
+  }
+
+  const txId = await broadcastTx({
+    contractAddress: DEPLOYER,
+    contractName: KEEPER_CONFIG.contracts.optionsMarketV2,
+    functionName: "create-listing",
+    functionArgs: [
+      uintCV(epochId),
+      uintCV(strikePrice),
+      uintCV(premium),
+      uintCV(collateral),
+      uintCV(expiryBlock),
+    ],
+    senderKey: privateKey,
+    anchorMode: AnchorMode.Any,
+    fee: 10000n,
+  });
+
+  console.log(`  Create listing TX: ${txId}`);
 }
 
 // ============================================
@@ -277,7 +302,22 @@ async function checkAndManageEpoch(): Promise<void> {
             premium
           ));
 
+          // Step 1: Start new epoch
           await startNewEpoch(strike, premium, duration);
+
+          // Step 2: Create listing on the market
+          // New epoch ID = current + 1 (start-epoch increments it)
+          const newEpochId = state.currentEpochId + 1n;
+          // Expiry block = current block + duration
+          const expiryBlock = state.currentBlock + BigInt(duration);
+
+          await createListingOnMarket(
+            newEpochId,
+            strike,
+            premium,
+            state.totalSbtcDeposited,
+            expiryBlock
+          );
         } else {
           console.log("  Could not get reliable price — skipping epoch start");
         }
