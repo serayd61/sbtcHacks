@@ -1,16 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  fetchCallReadOnlyFunction,
-  uintCV,
-  cvToJSON,
-} from "@stacks/transactions";
-import { buildBuyOptionTx, buildClaimPayoutTx } from "@/lib/vault-calls";
-import { CONTRACTS, DEPLOYER_ADDRESS, formatSBTC, formatUSD, network } from "@/lib/stacks-config";
+import { buildBuyOptionTx, buildClaimPayoutTx, getListingsBatch } from "@/lib/vault-calls";
+import { formatSBTC, formatUSD } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
-import { withRetry } from "@/lib/retry";
 import { estimateBlocksRemaining } from "@/lib/block-time";
 import { getChainInfo } from "@/lib/hiro-api";
 import type { Listing } from "@/lib/types";
@@ -32,75 +26,30 @@ export default function BuyOption({
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
   const { showToast } = useToast();
 
-  // Fetch current block height for time estimates
+  // Single useEffect: fetch chain info + listings in parallel
   useEffect(() => {
-    async function loadBlock() {
-      try {
-        const info = await getChainInfo();
-        setCurrentBlock(info.tenureHeight);
-      } catch {
-        // Non-critical
-      }
-    }
-    loadBlock();
-  }, [refreshKey]);
+    let cancelled = false;
 
-  useEffect(() => {
-    async function loadListings() {
+    async function load() {
       setLoading(true);
       try {
-        const countResult = await withRetry(() =>
-          fetchCallReadOnlyFunction({
-            contractAddress: CONTRACTS.MARKET.address,
-            contractName: CONTRACTS.MARKET.name,
-            functionName: "get-listing-count",
-            functionArgs: [],
-            network,
-            senderAddress: DEPLOYER_ADDRESS,
-          })
-        );
-        const count = Number(cvToJSON(countResult).value);
+        const [chainInfo, items] = await Promise.all([
+          getChainInfo().catch(() => null),
+          getListingsBatch(),
+        ]);
 
-        const items: (Listing & { id: number })[] = [];
-        for (let i = 1; i <= count; i++) {
-          try {
-            const result = await withRetry(() =>
-              fetchCallReadOnlyFunction({
-                contractAddress: CONTRACTS.MARKET.address,
-                contractName: CONTRACTS.MARKET.name,
-                functionName: "get-listing",
-                functionArgs: [uintCV(i)],
-                network,
-                senderAddress: DEPLOYER_ADDRESS,
-              })
-            );
-            const json = cvToJSON(result);
-            if (json.value) {
-              const v = json.value.value || json.value;
-              items.push({
-                id: i,
-                epochId: BigInt(v["epoch-id"].value),
-                strikePrice: BigInt(v["strike-price"].value),
-                premium: BigInt(v.premium.value),
-                collateral: BigInt(v.collateral.value),
-                expiryBlock: BigInt(v["expiry-block"].value),
-                sold: v.sold.value,
-                buyer: v.buyer.value?.value || null,
-                createdBlock: BigInt(v["created-block"].value),
-                claimed: v.claimed.value,
-              });
-            }
-          } catch {
-            // Skip failed individual listing fetches
-          }
-        }
+        if (cancelled) return;
+
+        if (chainInfo) setCurrentBlock(chainInfo.tenureHeight);
         setListings(items);
       } catch (e) {
-        console.error("Failed to load listings:", e);
+        if (!cancelled) console.error("Failed to load listings:", e);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
-    loadListings();
+
+    load();
+    return () => { cancelled = true; };
   }, [refreshKey]);
 
   const handleBuy = async (listing: Listing & { id: number }) => {
@@ -117,8 +66,9 @@ export default function BuyOption({
         },
         onCancel: () => showToast("Purchase cancelled", "info"),
       });
-    } catch (e: any) {
-      showToast(e.message || "Purchase failed", "error");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      showToast(message || "Purchase failed", "error");
     }
     setPendingId(null);
   };
@@ -137,8 +87,9 @@ export default function BuyOption({
         },
         onCancel: () => showToast("Claim cancelled", "info"),
       });
-    } catch (e: any) {
-      showToast(e.message || "Claim failed", "error");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      showToast(message || "Claim failed", "error");
     }
     setPendingId(null);
   };
@@ -148,7 +99,7 @@ export default function BuyOption({
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <div className="h-5 w-32 bg-gray-800 rounded animate-pulse mb-4" />
         <div className="space-y-3">
-          {[1,2].map(i => (
+          {SKELETON_ITEMS.map(i => (
             <div key={i} className="bg-gray-800 rounded-lg p-4 animate-pulse">
               <div className="h-4 w-48 bg-gray-700 rounded mb-3" />
               <div className="grid grid-cols-3 gap-2">
@@ -317,6 +268,12 @@ export default function BuyOption({
     </div>
   );
 }
+
+// ── Constants outside component (avoids re-creation on render) ──────
+
+const SKELETON_ITEMS = [1, 2] as const;
+
+// ── Sub-components ──────────────────────────────────────────────────
 
 function Step({ num, text }: { num: number; text: string }) {
   return (

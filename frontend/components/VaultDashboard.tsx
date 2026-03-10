@@ -5,7 +5,6 @@ import { getVaultInfo, getUserInfo, getOracleInfo } from "@/lib/vault-calls";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
 import { InfoTip } from "@/components/ui/Tooltip";
 import type { VaultInfo, UserInfo, OracleInfo } from "@/lib/types";
-import { withRetry } from "@/lib/retry";
 
 interface VaultDashboardProps {
   address: string | null;
@@ -24,30 +23,40 @@ export default function VaultDashboard({
   const [retryCount, setRetryCount] = useState(0);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError(null);
       try {
+        // getVaultInfo/getOracleInfo are now cached+deduplicated internally
         const [vault, oracle] = await Promise.all([
-          withRetry(() => getVaultInfo()),
-          withRetry(() => getOracleInfo()),
+          getVaultInfo(),
+          getOracleInfo(),
         ]);
+
+        if (cancelled) return;
+
         setVaultInfo(vault);
         setOracleInfo(oracle);
 
         if (address) {
-          const user = await withRetry(() => getUserInfo(address));
-          setUserInfo(user);
+          const user = await getUserInfo(address);
+          if (!cancelled) setUserInfo(user);
         } else {
           setUserInfo(null);
         }
       } catch (e) {
-        console.error("Failed to load vault info:", e);
-        setError("Unable to reach Stacks network. Check your connection and try again.");
+        if (!cancelled) {
+          console.error("Failed to load vault info:", e);
+          setError("Unable to reach Stacks network. Check your connection and try again.");
+        }
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+
     load();
+    return () => { cancelled = true; };
   }, [address, refreshKey, retryCount]);
 
   if (loading) {

@@ -8,15 +8,17 @@ import {
   deserializeCV,
   Pc,
   PostConditionMode,
+  type ClarityValue,
 } from "@stacks/transactions";
 import { CONTRACTS, DEPLOYER_ADDRESS, HIRO_API_URL, network } from "./stacks-config";
-import type { VaultInfo, UserInfo, Epoch, OracleInfo } from "./types";
+import { cached } from "./cache";
+import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing } from "./types";
 
 // Direct read-only call using native fetch (bypasses library encoding issues)
 async function readOnly(
   contract: { address: string; name: string },
   functionName: string,
-  args: any[] = [],
+  args: ClarityValue[] = [],
   sender?: string
 ) {
   const senderAddress = sender || DEPLOYER_ADDRESS;
@@ -45,74 +47,160 @@ async function readOnly(
   return cvToJSON(resultCV);
 }
 
-// Vault read-only calls
-export async function getVaultInfo(): Promise<VaultInfo> {
-  const result = await readOnly(CONTRACTS.VAULT, "get-vault-info");
-  const v = result.value.value;
-  return {
-    totalShares: BigInt(v["total-shares"].value),
-    totalSbtcDeposited: BigInt(v["total-sbtc-deposited"].value),
-    currentEpochId: BigInt(v["current-epoch-id"].value),
-    activeEpoch: v["active-epoch"].value,
-    vaultPaused: v["vault-paused"].value,
-    sharePrice: BigInt(v["share-price"].value),
-    totalPremiumsEarned: BigInt(v["total-premiums-earned"].value),
-    totalEpochsCompleted: BigInt(v["total-epochs-completed"].value),
-    totalFeesCollected: BigInt(v["total-fees-collected"]?.value ?? "0"),
-  };
+// ── Vault read-only calls (cached + deduplicated) ───────────────────
+
+export function getVaultInfo(): Promise<VaultInfo> {
+  return cached("vault-info", async () => {
+    const result = await readOnly(CONTRACTS.VAULT, "get-vault-info");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value.value;
+    return {
+      totalShares: BigInt(v["total-shares"].value),
+      totalSbtcDeposited: BigInt(v["total-sbtc-deposited"].value),
+      currentEpochId: BigInt(v["current-epoch-id"].value),
+      activeEpoch: v["active-epoch"].value,
+      vaultPaused: v["vault-paused"].value,
+      sharePrice: BigInt(v["share-price"].value),
+      totalPremiumsEarned: BigInt(v["total-premiums-earned"].value),
+      totalEpochsCompleted: BigInt(v["total-epochs-completed"].value),
+      totalFeesCollected: BigInt(v["total-fees-collected"]?.value ?? "0"),
+    };
+  });
 }
 
-export async function getUserInfo(
-  userAddress: string
-): Promise<UserInfo> {
-  const result = await readOnly(
-    CONTRACTS.VAULT,
-    "get-user-info",
-    [principalCV(userAddress)],
-    userAddress
-  );
-  const v = result.value.value;
-  return {
-    shares: BigInt(v.shares.value),
-    sbtcValue: BigInt(v["sbtc-value"].value),
-    sharePrice: BigInt(v["share-price"].value),
-  };
+export function getUserInfo(userAddress: string): Promise<UserInfo> {
+  return cached(`user-info:${userAddress}`, async () => {
+    const result = await readOnly(
+      CONTRACTS.VAULT,
+      "get-user-info",
+      [principalCV(userAddress)],
+      userAddress
+    );
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value.value;
+    return {
+      shares: BigInt(v.shares.value),
+      sbtcValue: BigInt(v["sbtc-value"].value),
+      sharePrice: BigInt(v["share-price"].value),
+    };
+  }, 5_000); // 5s TTL — user balance changes more frequently
 }
 
-export async function getEpoch(epochId: number): Promise<Epoch | null> {
-  const result = await readOnly(CONTRACTS.VAULT, "get-epoch", [
-    uintCV(epochId),
-  ]);
-  if (result.value === null) return null;
-  const v = result.value.value || result.value;
-  return {
-    strikePrice: BigInt(v["strike-price"].value),
-    premium: BigInt(v.premium.value),
-    collateral: BigInt(v.collateral.value),
-    startBlock: BigInt(v["start-block"].value),
-    expiryBlock: BigInt(v["expiry-block"].value),
-    settled: v.settled.value,
-    settlementPrice: BigInt(v["settlement-price"].value),
-    premiumEarned: BigInt(v["premium-earned"].value),
-    payout: BigInt(v.payout.value),
-    outcome: v.outcome.value,
-  };
+export function getEpoch(epochId: number): Promise<Epoch | null> {
+  return cached(`epoch:${epochId}`, async () => {
+    const result = await readOnly(CONTRACTS.VAULT, "get-epoch", [
+      uintCV(epochId),
+    ]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = result as any;
+    if (r.value === null) return null;
+    const v = r.value.value || r.value;
+    return {
+      strikePrice: BigInt(v["strike-price"].value),
+      premium: BigInt(v.premium.value),
+      collateral: BigInt(v.collateral.value),
+      startBlock: BigInt(v["start-block"].value),
+      expiryBlock: BigInt(v["expiry-block"].value),
+      settled: v.settled.value,
+      settlementPrice: BigInt(v["settlement-price"].value),
+      premiumEarned: BigInt(v["premium-earned"].value),
+      payout: BigInt(v.payout.value),
+      outcome: v.outcome.value,
+    };
+  });
 }
 
-export async function getOracleInfo(): Promise<OracleInfo> {
-  const result = await readOnly(CONTRACTS.ORACLE, "get-oracle-info");
-  const v = result.value.value;
-  return {
-    price: BigInt(v.price.value),
-    lastUpdateBlock: BigInt(v["last-update-block"].value),
-    currentRound: BigInt(v["current-round"].value),
-    currentBlock: BigInt(v["current-block"].value),
-    isStale: v["is-stale"].value,
-    submitterCount: BigInt(v["submitter-count"]?.value ?? "0"),
-    oraclePaused: v["oracle-paused"]?.value ?? false,
-    stalenessLimit: BigInt(v["staleness-limit"]?.value ?? "12"),
-    toleranceBps: BigInt(v["tolerance-bps"]?.value ?? "200"),
-  };
+export function getOracleInfo(): Promise<OracleInfo> {
+  return cached("oracle-info", async () => {
+    const result = await readOnly(CONTRACTS.ORACLE, "get-oracle-info");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value.value;
+    return {
+      price: BigInt(v.price.value),
+      lastUpdateBlock: BigInt(v["last-update-block"].value),
+      currentRound: BigInt(v["current-round"].value),
+      currentBlock: BigInt(v["current-block"].value),
+      isStale: v["is-stale"].value,
+      submitterCount: BigInt(v["submitter-count"]?.value ?? "0"),
+      oraclePaused: v["oracle-paused"]?.value ?? false,
+      stalenessLimit: BigInt(v["staleness-limit"]?.value ?? "12"),
+      toleranceBps: BigInt(v["tolerance-bps"]?.value ?? "200"),
+    };
+  });
+}
+
+// ── Listing read-only calls ─────────────────────────────────────────
+
+export async function getListingCount(): Promise<number> {
+  const result = await readOnly(CONTRACTS.MARKET, "get-listing-count");
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return Number((result as any).value);
+}
+
+export function getListing(id: number): Promise<(Listing & { id: number }) | null> {
+  return cached(`listing:${id}`, async () => {
+    const result = await readOnly(CONTRACTS.MARKET, "get-listing", [uintCV(id)]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = result as any;
+    if (!r.value) return null;
+    const v = r.value.value || r.value;
+    return {
+      id,
+      epochId: BigInt(v["epoch-id"].value),
+      strikePrice: BigInt(v["strike-price"].value),
+      premium: BigInt(v.premium.value),
+      collateral: BigInt(v.collateral.value),
+      expiryBlock: BigInt(v["expiry-block"].value),
+      sold: v.sold.value,
+      buyer: v.buyer.value?.value || null,
+      createdBlock: BigInt(v["created-block"].value),
+      claimed: v.claimed.value,
+    };
+  });
+}
+
+/**
+ * Fetch all listings in parallel chunks (fixes N+1 sequential fetch).
+ * Chunks of 5 to avoid rate-limiting on Hiro API.
+ */
+const PARALLEL_CHUNK_SIZE = 5;
+
+export async function getListingsBatch(): Promise<(Listing & { id: number })[]> {
+  const count = await getListingCount();
+  if (count === 0) return [];
+
+  const items: (Listing & { id: number })[] = [];
+
+  for (let start = 1; start <= count; start += PARALLEL_CHUNK_SIZE) {
+    const end = Math.min(start + PARALLEL_CHUNK_SIZE - 1, count);
+    const ids = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    const results = await Promise.all(ids.map((id) => getListing(id).catch(() => null)));
+    for (const r of results) {
+      if (r) items.push(r);
+    }
+  }
+
+  return items;
+}
+
+/**
+ * Fetch multiple epochs in parallel (fixes N+1 sequential fetch).
+ */
+export async function getEpochsBatch(epochIds: number[]): Promise<Map<number, Epoch>> {
+  const epochMap = new Map<number, Epoch>();
+  if (epochIds.length === 0) return epochMap;
+
+  for (let start = 0; start < epochIds.length; start += PARALLEL_CHUNK_SIZE) {
+    const chunk = epochIds.slice(start, start + PARALLEL_CHUNK_SIZE);
+    const results = await Promise.all(
+      chunk.map((id) => getEpoch(id).catch(() => null))
+    );
+    chunk.forEach((id, i) => {
+      if (results[i]) epochMap.set(id, results[i]!);
+    });
+  }
+
+  return epochMap;
 }
 
 // Token asset identifier for post-conditions

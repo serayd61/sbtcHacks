@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getEpoch, getVaultInfo } from "@/lib/vault-calls";
+import { getVaultInfo, getEpochsBatch } from "@/lib/vault-calls";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
 import { InfoTip } from "@/components/ui/Tooltip";
 import type { Epoch, VaultInfo } from "@/lib/types";
-import { withRetry } from "@/lib/retry";
 
 interface EpochHistoryProps {
   refreshKey: number;
@@ -19,35 +18,46 @@ export default function EpochHistory({ refreshKey }: EpochHistoryProps) {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError(null);
       try {
-        const vault: VaultInfo = await withRetry(() => getVaultInfo());
+        const vault: VaultInfo = await getVaultInfo();
         const currentId = Number(vault.currentEpochId);
+
+        if (cancelled) return;
+
         if (currentId === 0) {
           setEpochs([]);
           setLoading(false);
           return;
         }
 
+        // Fetch ALL epochs in parallel (fixes N+1 sequential fetch)
+        const epochIds = Array.from({ length: currentId }, (_, i) => currentId - i);
+        const epochMap = await getEpochsBatch(epochIds);
+
+        if (cancelled) return;
+
         const items: EpochRow[] = [];
-        for (let i = currentId; i >= 1; i--) {
-          try {
-            const ep = await withRetry(() => getEpoch(i));
-            if (ep) items.push({ ...ep, id: i });
-          } catch {
-            // skip failed epoch fetches
-          }
+        for (const id of epochIds) {
+          const ep = epochMap.get(id);
+          if (ep) items.push({ ...ep, id });
         }
         setEpochs(items);
       } catch (e) {
-        console.error("Failed to load epoch history:", e);
-        setError("Failed to load epoch history");
+        if (!cancelled) {
+          console.error("Failed to load epoch history:", e);
+          setError("Failed to load epoch history");
+        }
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+
     load();
+    return () => { cancelled = true; };
   }, [refreshKey]);
 
   if (loading) {

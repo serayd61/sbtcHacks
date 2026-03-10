@@ -1,19 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  fetchCallReadOnlyFunction,
-  uintCV,
-  cvToJSON,
-} from "@stacks/transactions";
-import { buildClaimPayoutTx } from "@/lib/vault-calls";
-import { CONTRACTS, DEPLOYER_ADDRESS, formatSBTC, formatUSD, ONE_SBTC, network } from "@/lib/stacks-config";
-import { getOracleInfo, getEpoch } from "@/lib/vault-calls";
-import { withRetry } from "@/lib/retry";
+import { buildClaimPayoutTx, getListingsBatch, getEpochsBatch, getOracleInfo } from "@/lib/vault-calls";
+import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
+import { getChainInfo } from "@/lib/hiro-api";
 import { useToast } from "@/components/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { estimateBlocksRemaining } from "@/lib/block-time";
-import { getChainInfo } from "@/lib/hiro-api";
 import type { Listing, OracleInfo, Epoch } from "@/lib/types";
 
 interface UserOptionsProps {
@@ -39,80 +32,43 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
       setLoading(false);
       return;
     }
+
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       try {
-        // Fetch block height, oracle, and listing count in parallel
-        const [chainInfo, oracleInfo, countResult] = await Promise.all([
+        // Parallel fetch: chain info, oracle, and ALL listings at once
+        const [chainInfo, oracleInfo, allListings] = await Promise.all([
           getChainInfo().catch(() => null),
-          withRetry(() => getOracleInfo()),
-          withRetry(() =>
-            fetchCallReadOnlyFunction({
-              contractAddress: CONTRACTS.MARKET.address,
-              contractName: CONTRACTS.MARKET.name,
-              functionName: "get-listing-count",
-              functionArgs: [],
-              network,
-              senderAddress: DEPLOYER_ADDRESS,
-            })
-          ),
+          getOracleInfo(),
+          getListingsBatch(),
         ]);
+
+        if (cancelled) return;
+
         if (chainInfo) setCurrentBlock(chainInfo.tenureHeight);
         setOracle(oracleInfo);
-        const count = Number(cvToJSON(countResult).value);
 
-        const items: UserListing[] = [];
-        const epochMap = new Map<number, Epoch>();
+        // Filter to user's listings
+        const userListings = allListings.filter((l) => l.buyer === address);
 
-        for (let i = 1; i <= count; i++) {
-          try {
-            const result = await withRetry(() =>
-              fetchCallReadOnlyFunction({
-                contractAddress: CONTRACTS.MARKET.address,
-                contractName: CONTRACTS.MARKET.name,
-                functionName: "get-listing",
-                functionArgs: [uintCV(i)],
-                network,
-                senderAddress: DEPLOYER_ADDRESS,
-              })
-            );
-            const json = cvToJSON(result);
-            if (json.value) {
-              const v = json.value.value || json.value;
-              const buyer = v.buyer.value?.value || null;
-              if (buyer === address) {
-                const listing: UserListing = {
-                  id: i,
-                  epochId: BigInt(v["epoch-id"].value),
-                  strikePrice: BigInt(v["strike-price"].value),
-                  premium: BigInt(v.premium.value),
-                  collateral: BigInt(v.collateral.value),
-                  expiryBlock: BigInt(v["expiry-block"].value),
-                  sold: v.sold.value,
-                  buyer,
-                  createdBlock: BigInt(v["created-block"].value),
-                  claimed: v.claimed.value,
-                };
-                items.push(listing);
-                const eid = Number(listing.epochId);
-                if (!epochMap.has(eid)) {
-                  const ep = await withRetry(() => getEpoch(eid));
-                  if (ep) epochMap.set(eid, ep);
-                }
-              }
-            }
-          } catch {
-            // skip
-          }
-        }
-        setMyOptions(items);
+        // Batch-fetch needed epochs in parallel
+        const epochIds = [...new Set(userListings.map((l) => Number(l.epochId)))];
+        const epochMap = await getEpochsBatch(epochIds);
+
+        if (cancelled) return;
+
+        setMyOptions(userListings);
         setEpochs(epochMap);
       } catch (e) {
-        console.error("Failed to load user options:", e);
+        if (!cancelled) console.error("Failed to load user options:", e);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+
     load();
+    return () => { cancelled = true; };
   }, [address, refreshKey]);
 
   const handleClaim = async (listingId: number) => {
@@ -129,13 +85,14 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
         },
         onCancel: () => showToast("Claim cancelled", "info"),
       });
-    } catch (e: any) {
-      showToast(e.message || "Claim failed", "error");
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      showToast(message || "Claim failed", "error");
     }
     setPendingId(null);
   };
 
-  // Don't render anything if no wallet connected or still loading
+  // Don't render anything if no wallet connected
   if (!address) return null;
 
   if (loading) {
@@ -146,10 +103,9 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
           <div className="bg-gray-800/50 rounded-lg p-4 animate-pulse">
             <div className="h-4 w-48 bg-gray-700 rounded mb-3" />
             <div className="grid grid-cols-4 gap-2">
-              <div className="h-8 bg-gray-700 rounded" />
-              <div className="h-8 bg-gray-700 rounded" />
-              <div className="h-8 bg-gray-700 rounded" />
-              <div className="h-8 bg-gray-700 rounded" />
+              {SKELETON_COLS.map(i => (
+                <div key={i} className="h-8 bg-gray-700 rounded" />
+              ))}
             </div>
           </div>
         </div>
@@ -174,168 +130,191 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
       </div>
 
       <div className="space-y-3">
-        {myOptions.map((opt) => {
-          const epoch = epochs.get(Number(opt.epochId));
-          const strikeUsd = Number(opt.strikePrice) / 1_000_000;
-          const currentUsd = currentPrice / 1_000_000;
-          const premiumSbtc = Number(opt.premium) / ONE_SBTC;
-          const collateralSbtc = Number(opt.collateral) / ONE_SBTC;
-          const expiryBlock = Number(opt.expiryBlock);
-
-          // P&L calculation for call option
-          const isItm = currentUsd > strikeUsd;
-          const intrinsicValue = isItm
-            ? ((currentUsd - strikeUsd) / currentUsd) * collateralSbtc
-            : 0;
-          const pnl = intrinsicValue - premiumSbtc;
-          const pnlPercent = premiumSbtc > 0 ? (pnl / premiumSbtc) * 100 : 0;
-
-          // Time remaining
-          const timeRemaining = currentBlock
-            ? estimateBlocksRemaining(currentBlock, expiryBlock)
-            : null;
-          const isExpired = currentBlock ? expiryBlock <= currentBlock : false;
-
-          // Status
-          let status: string;
-          let statusClass: string;
-          if (opt.claimed) {
-            status = "Settled";
-            statusClass = "bg-gray-800 text-gray-500 border-gray-700";
-          } else if (epoch?.settled) {
-            status = "Ready to Claim";
-            statusClass = "bg-green-900/30 text-green-400 border-green-500/20";
-          } else if (isExpired) {
-            status = "Awaiting Settlement";
-            statusClass = "bg-yellow-900/30 text-yellow-400 border-yellow-500/20";
-          } else {
-            status = "Active";
-            statusClass = "bg-blue-900/30 text-blue-400 border-blue-500/20";
-          }
-
-          return (
-            <div
-              key={opt.id}
-              className="bg-gray-900/60 rounded-lg p-4 border border-gray-700/50"
-            >
-              <div className="flex justify-between items-start mb-3">
-                <div>
-                  <span className="text-xs text-gray-500">
-                    Option #{opt.id} | Epoch #{opt.epochId.toString()}
-                  </span>
-                  <p className="text-white font-semibold">
-                    CALL @ {formatUSD(opt.strikePrice)}
-                  </p>
-                </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${statusClass}`}>
-                  {status}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
-                <div>
-                  <p className="text-gray-500 text-xs">Premium Paid</p>
-                  <p className="text-white font-medium">{premiumSbtc.toFixed(4)} sBTC</p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs">Collateral</p>
-                  <p className="text-white font-medium">{collateralSbtc.toFixed(4)} sBTC</p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs">Current BTC</p>
-                  <p className="text-white font-medium">{formatUSD(BigInt(currentPrice))}</p>
-                </div>
-                <div>
-                  <p className="text-gray-500 text-xs flex items-center">
-                    Unrealized P&L
-                    <InfoTip text="Estimated profit/loss based on current BTC price vs. strike price, minus the premium you paid." />
-                  </p>
-                  <p className={`font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
-                    {pnl >= 0 ? "+" : ""}{pnl.toFixed(4)} sBTC
-                    <span className="text-xs ml-1 opacity-70">
-                      ({pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(1)}%)
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {/* Settled P&L */}
-              {epoch?.settled && !opt.claimed && (
-                <div className="mb-3 p-2 rounded bg-green-900/20 border border-green-500/10">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Settlement Price</span>
-                    <span className="text-white font-medium">{formatUSD(epoch.settlementPrice)}</span>
-                  </div>
-                  <div className="flex justify-between text-sm">
-                    <span className="text-gray-400">Outcome</span>
-                    <span className={`font-medium ${epoch.outcome === "otm" || epoch.outcome === "OTM" ? "text-red-400" : "text-green-400"}`}>
-                      {epoch.outcome === "otm" || epoch.outcome === "OTM"
-                        ? "OTM (Out of the Money)"
-                        : "ITM (In the Money)"}
-                    </span>
-                  </div>
-                  {Number(epoch.payout) > 0 && (
-                    <div className="flex justify-between text-sm">
-                      <span className="text-gray-400">Payout</span>
-                      <span className="text-green-400 font-bold">
-                        {(Number(epoch.payout) / ONE_SBTC).toFixed(4)} sBTC
-                      </span>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* Claim button */}
-              {epoch?.settled && !opt.claimed && (
-                <button
-                  onClick={() => handleClaim(opt.id)}
-                  disabled={pendingId === opt.id}
-                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
-                >
-                  {pendingId === opt.id ? (
-                    <>
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
-                      </svg>
-                      Confirming...
-                    </>
-                  ) : (
-                    "Claim Payout"
-                  )}
-                </button>
-              )}
-
-              {/* Progress bar and expiry countdown for active options */}
-              {!epoch?.settled && !opt.claimed && (
-                <div className="mt-2">
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span className="flex items-center gap-1">
-                      <span className={`w-1.5 h-1.5 rounded-full ${isItm ? "bg-green-400" : "bg-orange-400"}`} />
-                      {isItm ? "In the Money (ITM)" : "Out of the Money (OTM)"}
-                    </span>
-                    <span>
-                      {timeRemaining ? (
-                        <span className={isExpired ? "text-red-400" : ""}>
-                          {timeRemaining}
-                        </span>
-                      ) : (
-                        `Block #${expiryBlock.toLocaleString()}`
-                      )}
-                    </span>
-                  </div>
-                  <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-                    <div
-                      className={`h-full rounded-full transition-all ${isItm ? "bg-green-500" : "bg-orange-500"}`}
-                      style={{ width: `${Math.min(100, Math.abs(pnlPercent))}%` }}
-                    />
-                  </div>
-                </div>
-              )}
-            </div>
-          );
-        })}
+        {myOptions.map((opt) => (
+          <OptionCard
+            key={opt.id}
+            opt={opt}
+            epoch={epochs.get(Number(opt.epochId))}
+            currentPrice={currentPrice}
+            currentBlock={currentBlock}
+            pendingId={pendingId}
+            onClaim={handleClaim}
+          />
+        ))}
       </div>
+    </div>
+  );
+}
+
+// ── Constants outside component ─────────────────────────────────────
+
+const SKELETON_COLS = [1, 2, 3, 4] as const;
+
+// ── Option Card sub-component ───────────────────────────────────────
+
+interface OptionCardProps {
+  opt: UserListing;
+  epoch: Epoch | undefined;
+  currentPrice: number;
+  currentBlock: number | null;
+  pendingId: number | null;
+  onClaim: (id: number) => void;
+}
+
+function OptionCard({ opt, epoch, currentPrice, currentBlock, pendingId, onClaim }: OptionCardProps) {
+  const strikeUsd = Number(opt.strikePrice) / 1_000_000;
+  const currentUsd = currentPrice / 1_000_000;
+  const premiumSbtc = Number(opt.premium) / ONE_SBTC;
+  const collateralSbtc = Number(opt.collateral) / ONE_SBTC;
+  const expiryBlock = Number(opt.expiryBlock);
+
+  // P&L calculation for call option
+  const isItm = currentUsd > strikeUsd;
+  const intrinsicValue = isItm
+    ? ((currentUsd - strikeUsd) / currentUsd) * collateralSbtc
+    : 0;
+  const pnl = intrinsicValue - premiumSbtc;
+  const pnlPercent = premiumSbtc > 0 ? (pnl / premiumSbtc) * 100 : 0;
+
+  // Time remaining
+  const timeRemaining = currentBlock
+    ? estimateBlocksRemaining(currentBlock, expiryBlock)
+    : null;
+  const isExpired = currentBlock ? expiryBlock <= currentBlock : false;
+
+  // Status
+  let status: string;
+  let statusClass: string;
+  if (opt.claimed) {
+    status = "Settled";
+    statusClass = "bg-gray-800 text-gray-500 border-gray-700";
+  } else if (epoch?.settled) {
+    status = "Ready to Claim";
+    statusClass = "bg-green-900/30 text-green-400 border-green-500/20";
+  } else if (isExpired) {
+    status = "Awaiting Settlement";
+    statusClass = "bg-yellow-900/30 text-yellow-400 border-yellow-500/20";
+  } else {
+    status = "Active";
+    statusClass = "bg-blue-900/30 text-blue-400 border-blue-500/20";
+  }
+
+  return (
+    <div className="bg-gray-900/60 rounded-lg p-4 border border-gray-700/50">
+      <div className="flex justify-between items-start mb-3">
+        <div>
+          <span className="text-xs text-gray-500">
+            Option #{opt.id} | Epoch #{opt.epochId.toString()}
+          </span>
+          <p className="text-white font-semibold">
+            CALL @ {formatUSD(opt.strikePrice)}
+          </p>
+        </div>
+        <span className={`text-xs px-2.5 py-1 rounded-full font-medium border ${statusClass}`}>
+          {status}
+        </span>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-sm mb-3">
+        <div>
+          <p className="text-gray-500 text-xs">Premium Paid</p>
+          <p className="text-white font-medium">{premiumSbtc.toFixed(4)} sBTC</p>
+        </div>
+        <div>
+          <p className="text-gray-500 text-xs">Collateral</p>
+          <p className="text-white font-medium">{collateralSbtc.toFixed(4)} sBTC</p>
+        </div>
+        <div>
+          <p className="text-gray-500 text-xs">Current BTC</p>
+          <p className="text-white font-medium">{formatUSD(BigInt(currentPrice))}</p>
+        </div>
+        <div>
+          <p className="text-gray-500 text-xs flex items-center">
+            Unrealized P&L
+            <InfoTip text="Estimated profit/loss based on current BTC price vs. strike price, minus the premium you paid." />
+          </p>
+          <p className={`font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
+            {pnl >= 0 ? "+" : ""}{pnl.toFixed(4)} sBTC
+            <span className="text-xs ml-1 opacity-70">
+              ({pnlPercent >= 0 ? "+" : ""}{pnlPercent.toFixed(1)}%)
+            </span>
+          </p>
+        </div>
+      </div>
+
+      {/* Settled P&L */}
+      {epoch?.settled && !opt.claimed && (
+        <div className="mb-3 p-2 rounded bg-green-900/20 border border-green-500/10">
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Settlement Price</span>
+            <span className="text-white font-medium">{formatUSD(epoch.settlementPrice)}</span>
+          </div>
+          <div className="flex justify-between text-sm">
+            <span className="text-gray-400">Outcome</span>
+            <span className={`font-medium ${epoch.outcome === "otm" || epoch.outcome === "OTM" ? "text-red-400" : "text-green-400"}`}>
+              {epoch.outcome === "otm" || epoch.outcome === "OTM"
+                ? "OTM (Out of the Money)"
+                : "ITM (In the Money)"}
+            </span>
+          </div>
+          {Number(epoch.payout) > 0 && (
+            <div className="flex justify-between text-sm">
+              <span className="text-gray-400">Payout</span>
+              <span className="text-green-400 font-bold">
+                {(Number(epoch.payout) / ONE_SBTC).toFixed(4)} sBTC
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Claim button */}
+      {epoch?.settled && !opt.claimed && (
+        <button
+          onClick={() => onClaim(opt.id)}
+          disabled={pendingId === opt.id}
+          className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
+        >
+          {pendingId === opt.id ? (
+            <>
+              <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+              </svg>
+              Confirming...
+            </>
+          ) : (
+            "Claim Payout"
+          )}
+        </button>
+      )}
+
+      {/* Progress bar and expiry countdown for active options */}
+      {!epoch?.settled && !opt.claimed && (
+        <div className="mt-2">
+          <div className="flex justify-between text-xs text-gray-500 mb-1">
+            <span className="flex items-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${isItm ? "bg-green-400" : "bg-orange-400"}`} />
+              {isItm ? "In the Money (ITM)" : "Out of the Money (OTM)"}
+            </span>
+            <span>
+              {timeRemaining ? (
+                <span className={isExpired ? "text-red-400" : ""}>
+                  {timeRemaining}
+                </span>
+              ) : (
+                `Block #${expiryBlock.toLocaleString()}`
+              )}
+            </span>
+          </div>
+          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${isItm ? "bg-green-500" : "bg-orange-500"}`}
+              style={{ width: `${Math.min(100, Math.abs(pnlPercent))}%` }}
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,10 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getEpoch, getVaultInfo } from "@/lib/vault-calls";
+import { getVaultInfo, getEpochsBatch } from "@/lib/vault-calls";
 import { ONE_SBTC } from "@/lib/stacks-config";
 import type { VaultInfo } from "@/lib/types";
-import { withRetry } from "@/lib/retry";
 
 interface PerformanceChartProps {
   refreshKey: number;
@@ -21,38 +20,42 @@ export default function PerformanceChart({ refreshKey }: PerformanceChartProps) 
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       try {
-        const vault: VaultInfo = await withRetry(() => getVaultInfo());
+        const vault: VaultInfo = await getVaultInfo();
         const currentId = Number(vault.currentEpochId);
+
+        if (cancelled) return;
+
         if (currentId === 0) {
           setData([]);
           setLoading(false);
           return;
         }
 
+        // Fetch ALL epochs in parallel (fixes N+1 sequential fetch)
+        const epochIds = Array.from({ length: currentId }, (_, i) => i + 1);
+        const epochMap = await getEpochsBatch(epochIds);
+
+        if (cancelled) return;
+
         const points: DataPoint[] = [{ epoch: 0, sharePrice: 1, netReturn: 0 }];
         let cumulativeReturn = 0;
 
         for (let i = 1; i <= currentId; i++) {
-          try {
-            const ep = await withRetry(() => getEpoch(i));
-            if (ep && ep.settled) {
-              const earned = Number(ep.premiumEarned) / ONE_SBTC;
-              const payout = Number(ep.payout) / ONE_SBTC;
-              const net = earned - payout;
-              cumulativeReturn += net;
-              // Share price = 1 + cumulative net return as fraction of initial TVL
-              // Simplified: use vault's current share price for latest point
-              const price = 1 + cumulativeReturn * 0.1; // Approximate scaling
-              points.push({ epoch: i, sharePrice: price, netReturn: net });
-            } else {
-              // Active/unsettled epoch
-              points.push({ epoch: i, sharePrice: points[points.length - 1].sharePrice, netReturn: 0 });
-            }
-          } catch {
-            // skip
+          const ep = epochMap.get(i);
+          if (ep && ep.settled) {
+            const earned = Number(ep.premiumEarned) / ONE_SBTC;
+            const payout = Number(ep.payout) / ONE_SBTC;
+            const net = earned - payout;
+            cumulativeReturn += net;
+            const price = 1 + cumulativeReturn * 0.1;
+            points.push({ epoch: i, sharePrice: price, netReturn: net });
+          } else {
+            points.push({ epoch: i, sharePrice: points[points.length - 1].sharePrice, netReturn: 0 });
           }
         }
 
@@ -60,7 +63,6 @@ export default function PerformanceChart({ refreshKey }: PerformanceChartProps) 
         const actualSharePrice = Number(vault.sharePrice) / ONE_SBTC;
         if (points.length > 0) {
           points[points.length - 1].sharePrice = actualSharePrice;
-          // Recalculate intermediate prices proportionally if we have actual data
           if (points.length > 2 && actualSharePrice > 1) {
             const factor = (actualSharePrice - 1) / (points[points.length - 1].sharePrice !== 1 ? points[points.length - 1].sharePrice - 1 : 1);
             for (let i = 1; i < points.length - 1; i++) {
@@ -71,11 +73,13 @@ export default function PerformanceChart({ refreshKey }: PerformanceChartProps) 
 
         setData(points);
       } catch (e) {
-        console.error("Failed to load performance data:", e);
+        if (!cancelled) console.error("Failed to load performance data:", e);
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+
     load();
+    return () => { cancelled = true; };
   }, [refreshKey]);
 
   if (loading) {

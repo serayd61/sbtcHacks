@@ -5,7 +5,6 @@ import { buildDepositTx, buildWithdrawTx, getUserInfo, getVaultInfo } from "@/li
 import { parseSBTC, ONE_SBTC } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
-import { withRetry } from "@/lib/retry";
 import type { UserInfo, VaultInfo } from "@/lib/types";
 
 interface DepositWithdrawProps {
@@ -29,13 +28,17 @@ export default function DepositWithdraw({
 
   // Fetch user balance for Max button and withdrawal preview
   useEffect(() => {
+    let cancelled = false;
+
     async function loadBalance() {
       try {
-        const vault = await withRetry(() => getVaultInfo());
+        const vault = await getVaultInfo();
+        if (cancelled) return;
         setVaultInfo(vault);
+
         if (address) {
-          const info = await withRetry(() => getUserInfo(address));
-          setUserInfo(info);
+          const info = await getUserInfo(address);
+          if (!cancelled) setUserInfo(info);
         } else {
           setUserInfo(null);
         }
@@ -43,7 +46,9 @@ export default function DepositWithdraw({
         // Non-critical — balance display is optional
       }
     }
+
     loadBalance();
+    return () => { cancelled = true; };
   }, [address, refreshKey]);
 
   const userShares = userInfo ? Number(userInfo.shares) / ONE_SBTC : 0;
@@ -74,8 +79,9 @@ export default function DepositWithdraw({
         },
         onCancel: () => showToast("Deposit cancelled", "info"),
       });
-    } catch (e: any) {
-      showToast(e.message || "Deposit failed", "error");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(msg || "Deposit failed", "error");
     }
     setPending(false);
   };
@@ -104,8 +110,9 @@ export default function DepositWithdraw({
         },
         onCancel: () => showToast("Withdrawal cancelled", "info"),
       });
-    } catch (e: any) {
-      showToast(e.message || "Withdrawal failed", "error");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(msg || "Withdrawal failed", "error");
     }
     setPending(false);
   };

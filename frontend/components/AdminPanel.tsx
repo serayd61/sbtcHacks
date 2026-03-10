@@ -35,8 +35,9 @@ export default function AdminPanel({ address, onTxComplete }: AdminPanelProps) {
     setPending(name);
     try {
       await fn();
-    } catch (e: any) {
-      showToast(e.message || `${name} failed`, "error");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(msg || `${name} failed`, "error");
     }
     setPending(null);
   };

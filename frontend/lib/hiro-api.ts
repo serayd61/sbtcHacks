@@ -1,5 +1,6 @@
 import { IS_MAINNET, DEPLOYER_ADDRESS } from "./stacks-config";
 import { withRetry } from "./retry";
+import { cached } from "./cache";
 
 const HIRO_API = IS_MAINNET
   ? "https://api.mainnet.hiro.so"
@@ -28,23 +29,27 @@ export interface TransactionEvent {
 
 /**
  * Fetch Stacks chain info (block heights, version, etc.)
+ * Cached for 15s to avoid duplicate calls from multiple components.
  */
-export async function getChainInfo(): Promise<ChainInfo> {
-  return withRetry(async () => {
-    const res = await fetch(`${HIRO_API}/v2/info`, {
-      next: { revalidate: 30 },
-    });
-    if (!res.ok) throw new Error(`Chain info failed: ${res.status}`);
-    const data = await res.json();
-    return {
-      stacksTipHeight: data.stacks_tip_height,
-      burnBlockHeight: data.burn_block_height,
-      tenureHeight: data.tenure_height || data.burn_block_height,
-      serverVersion: data.server_version || "",
-      networkId: data.network_id || 0,
-      peerCount: data.peer_count || 0,
-    };
-  });
+export function getChainInfo(): Promise<ChainInfo> {
+  return cached("chain-info", () =>
+    withRetry(async () => {
+      const res = await fetch(`${HIRO_API}/v2/info`, {
+        next: { revalidate: 30 },
+      });
+      if (!res.ok) throw new Error(`Chain info failed: ${res.status}`);
+      const data = await res.json();
+      return {
+        stacksTipHeight: data.stacks_tip_height,
+        burnBlockHeight: data.burn_block_height,
+        tenureHeight: data.tenure_height || data.burn_block_height,
+        serverVersion: data.server_version || "",
+        networkId: data.network_id || 0,
+        peerCount: data.peer_count || 0,
+      };
+    }),
+    15_000 // 15s TTL — block info changes slowly
+  );
 }
 
 /**
@@ -64,23 +69,29 @@ export async function getAddressTransactions(
 
     const deployerLower = DEPLOYER_ADDRESS.toLowerCase();
 
-    return (data.results || [])
-      .filter((tx: any) => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return ((data.results || []) as Record<string, unknown>[])
+      .filter((tx) => {
         if (tx.tx_type !== "contract_call") return false;
-        const contractId = tx.contract_call?.contract_id || "";
-        return contractId.toLowerCase().startsWith(deployerLower);
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const contractId = (tx.contract_call as any)?.contract_id || "";
+        return (contractId as string).toLowerCase().startsWith(deployerLower);
       })
-      .map((tx: any) => ({
-        txId: tx.tx_id,
-        type: tx.tx_type,
-        functionName: tx.contract_call?.function_name || "",
-        contractId: tx.contract_call?.contract_id || "",
-        sender: tx.sender_address,
-        status: tx.tx_status,
-        blockHeight: tx.block_height || 0,
-        blockTime: tx.burn_block_time || 0,
-        fee: Number(tx.fee_rate || 0),
-      }));
+      .map((tx) => {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const cc = tx.contract_call as any;
+        return {
+          txId: tx.tx_id as string,
+          type: tx.tx_type as string,
+          functionName: (cc?.function_name || "") as string,
+          contractId: (cc?.contract_id || "") as string,
+          sender: tx.sender_address as string,
+          status: tx.tx_status as TransactionEvent["status"],
+          blockHeight: (tx.block_height || 0) as number,
+          blockTime: (tx.burn_block_time || 0) as number,
+          fee: Number(tx.fee_rate || 0),
+        };
+      });
   });
 }
 

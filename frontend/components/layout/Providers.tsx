@@ -84,8 +84,8 @@ function WalletProvider({ children }: { children: React.ReactNode }) {
       } else {
         showToast("No Stacks address found in wallet", "error");
       }
-    } catch (e: any) {
-      const msg = e?.message || String(e);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
       if (msg.includes("cancel") || msg.includes("closed")) {
         showToast("Wallet connection cancelled", "info");
       } else {

@@ -48,19 +48,25 @@ export default function TransactionHistory({
       return;
     }
 
+    let cancelled = false;
+
     async function load() {
       setLoading(true);
       setError(null);
       try {
         const result = await getAddressTransactions(address!, 30);
-        setTxs(result);
+        if (!cancelled) setTxs(result);
       } catch (e) {
-        console.error("Failed to load transactions:", e);
-        setError("Failed to load transaction history");
+        if (!cancelled) {
+          console.error("Failed to load transactions:", e);
+          setError("Failed to load transaction history");
+        }
       }
-      setLoading(false);
+      if (!cancelled) setLoading(false);
     }
+
     load();
+    return () => { cancelled = true; };
   }, [address, refreshKey]);
 
   if (!address) {

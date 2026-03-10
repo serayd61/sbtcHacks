@@ -25,8 +25,9 @@ export default function FaucetButton({ address }: FaucetButtonProps) {
         },
         onCancel: () => showToast("Faucet cancelled", "info"),
       });
-    } catch (e: any) {
-      showToast(e.message || "Faucet failed", "error");
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(msg || "Faucet failed", "error");
     }
     setPending(false);
   };
