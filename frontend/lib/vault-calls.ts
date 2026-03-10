@@ -2,6 +2,7 @@ import {
   uintCV,
   principalCV,
   contractPrincipalCV,
+  boolCV,
   cvToJSON,
   serializeCV,
   deserializeCV,
@@ -137,6 +138,8 @@ export function buildDepositTx(amount: number, senderAddress: string) {
 }
 
 export function buildWithdrawTx(shares: number, senderAddress: string) {
+  // M-2 FIX: Use Deny mode — vault should only send sBTC to the user
+  const vaultContractId: `${string}.${string}` = `${CONTRACTS.VAULT.address}.${CONTRACTS.VAULT.name}`;
   return {
     contractAddress: CONTRACTS.VAULT.address,
     contractName: CONTRACTS.VAULT.name,
@@ -145,8 +148,11 @@ export function buildWithdrawTx(shares: number, senderAddress: string) {
       contractPrincipalCV(CONTRACTS.MOCK_SBTC.address, CONTRACTS.MOCK_SBTC.name),
       uintCV(shares),
     ],
-    postConditionMode: PostConditionMode.Allow,
-    postConditions: [],
+    postConditionMode: PostConditionMode.Deny,
+    postConditions: [
+      // User burns shares (sends nothing), vault sends sBTC to user
+      Pc.principal(vaultContractId).willSendLte(shares * 2).ft(ftId, ftAsset),
+    ],
     network,
   };
 }
@@ -185,6 +191,9 @@ export function buildBuyOptionTx(listingId: number, premium: number, senderAddre
 }
 
 export function buildClaimPayoutTx(listingId: number) {
+  // M-3 FIX: Use Deny mode — market contract should only send sBTC payout to buyer
+  const vaultContractId: `${string}.${string}` = `${CONTRACTS.VAULT.address}.${CONTRACTS.VAULT.name}`;
+  const marketContractId: `${string}.${string}` = `${CONTRACTS.MARKET.address}.${CONTRACTS.MARKET.name}`;
   return {
     contractAddress: CONTRACTS.MARKET.address,
     contractName: CONTRACTS.MARKET.name,
@@ -193,8 +202,12 @@ export function buildClaimPayoutTx(listingId: number) {
       contractPrincipalCV(CONTRACTS.MOCK_SBTC.address, CONTRACTS.MOCK_SBTC.name),
       uintCV(listingId),
     ],
-    postConditionMode: PostConditionMode.Allow,
-    postConditions: [],
+    postConditionMode: PostConditionMode.Deny,
+    postConditions: [
+      // Vault sends payout to market, market forwards to buyer
+      Pc.principal(vaultContractId).willSendLte(100_000_000_000).ft(ftId, ftAsset),
+      Pc.principal(marketContractId).willSendLte(100_000_000_000).ft(ftId, ftAsset),
+    ],
     network,
   };
 }
@@ -346,7 +359,8 @@ export function buildSetVaultPausedTx(paused: boolean) {
     contractAddress: CONTRACTS.VAULT.address,
     contractName: CONTRACTS.VAULT.name,
     functionName: "set-vault-paused",
-    functionArgs: [paused ? uintCV(1) : uintCV(0)], // Clarity bool representation
+    // M-6 FIX: Clarity expects bool, not uint — was causing type mismatch on-chain
+    functionArgs: [boolCV(paused)],
     postConditionMode: PostConditionMode.Allow,
     postConditions: [],
     network,

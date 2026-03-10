@@ -95,9 +95,7 @@ export function getHiroApiUrl(): string {
  * Get explorer URL for a transaction.
  */
 export function getExplorerTxUrl(txId: string): string {
-  const base = IS_MAINNET
-    ? "https://explorer.hiro.so/txid"
-    : "https://explorer.hiro.so/txid";
+  // BUG-6 FIX: Remove pointless ternary — both branches were identical
   const suffix = IS_MAINNET ? "" : "?chain=testnet";
-  return `${base}/${txId}${suffix}`;
+  return `https://explorer.hiro.so/txid/${txId}${suffix}`;
 }

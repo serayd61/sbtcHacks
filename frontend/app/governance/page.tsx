@@ -28,7 +28,7 @@ export default function GovernancePage() {
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">Your Balance</span>
               <span className="text-sm text-orange-400 font-medium">
-                {address ? "Connect to view" : "—"}
+                {address ? "—" : "Connect wallet to view"}
               </span>
             </div>
             <div className="flex justify-between items-center">

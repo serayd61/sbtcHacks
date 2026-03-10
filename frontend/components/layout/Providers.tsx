@@ -4,6 +4,13 @@ import { useState, useEffect, createContext, useContext, useCallback } from "rea
 import { ToastProvider, useToast } from "@/components/Toast";
 import { IS_MAINNET } from "@/lib/stacks-config";
 
+// L-1 FIX: Validate Stacks address format before using
+function isValidStacksAddress(addr: string | null): boolean {
+  if (!addr) return false;
+  // Stacks addresses: SP/ST prefix + 33-41 characters (C32 encoded)
+  return /^(SP|ST)[0-9A-Z]{33,41}$/i.test(addr);
+}
+
 interface WalletContextType {
   address: string | null;
   setAddress: (address: string | null) => void;
@@ -37,14 +44,23 @@ function WalletProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const saved = localStorage.getItem("stx-address");
-    if (saved) setAddress(saved);
+    // L-1 FIX: Only use address if it passes format validation
+    if (saved && isValidStacksAddress(saved)) {
+      setAddress(saved);
+    } else if (saved) {
+      // Invalid address in storage — clean it up
+      localStorage.removeItem("stx-address");
+    }
   }, []);
 
-  // Sync across tabs
+  // Sync across tabs (with validation)
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
       if (e.key === "stx-address") {
-        setAddress(e.newValue);
+        // L-1 FIX: Validate cross-tab address too
+        if (e.newValue === null || isValidStacksAddress(e.newValue)) {
+          setAddress(e.newValue);
+        }
       }
     };
     window.addEventListener("storage", onStorage);

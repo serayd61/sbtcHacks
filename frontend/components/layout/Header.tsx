@@ -2,21 +2,28 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useMemo, useState } from "react";
 import { useWallet } from "./Providers";
 import NetworkStatus from "@/components/NetworkStatus";
-import { useState } from "react";
+import { DEPLOYER_ADDRESS } from "@/lib/stacks-config";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Dashboard", icon: DashboardIcon },
-  { href: "/market", label: "Market", icon: MarketIcon },
-  { href: "/governance", label: "Governance", icon: GovernanceIcon },
-  { href: "/admin", label: "Admin", icon: AdminIcon },
+  { href: "/", label: "Dashboard", icon: DashboardIcon, adminOnly: false },
+  { href: "/market", label: "Market", icon: MarketIcon, adminOnly: false },
+  { href: "/governance", label: "Governance", icon: GovernanceIcon, adminOnly: false },
+  { href: "/admin", label: "Admin", icon: AdminIcon, adminOnly: true },
 ];
 
 export default function Header() {
   const { address, connectWallet, disconnectWallet, isConnecting } = useWallet();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // M-4 FIX: Only show admin nav to deployer address
+  const visibleNavItems = useMemo(
+    () => NAV_ITEMS.filter((item) => !item.adminOnly || address === DEPLOYER_ADDRESS),
+    [address]
+  );
 
   return (
     <header className="border-b border-gray-800 bg-gray-950/80 backdrop-blur-md sticky top-0 z-40">
@@ -36,8 +43,8 @@ export default function Header() {
           </Link>
 
           {/* Desktop Navigation */}
-          <nav className="hidden md:flex items-center gap-1">
-            {NAV_ITEMS.map((item) => {
+          <nav className="hidden md:flex items-center gap-1" aria-label="Main navigation">
+            {visibleNavItems.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link
@@ -72,6 +79,7 @@ export default function Header() {
                   onClick={disconnectWallet}
                   className="text-xs text-gray-500 hover:text-white transition-colors p-1.5"
                   title="Disconnect"
+                  aria-label="Disconnect wallet"
                 >
                   <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
@@ -102,6 +110,8 @@ export default function Header() {
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
               className="md:hidden p-2 text-gray-400 hover:text-white"
+              aria-label={mobileMenuOpen ? "Close menu" : "Open menu"}
+              aria-expanded={mobileMenuOpen}
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 {mobileMenuOpen ? (
@@ -116,8 +126,8 @@ export default function Header() {
 
         {/* Mobile Navigation */}
         {mobileMenuOpen && (
-          <nav className="md:hidden pb-4 border-t border-gray-800 pt-3 space-y-1">
-            {NAV_ITEMS.map((item) => {
+          <nav className="md:hidden pb-4 border-t border-gray-800 pt-3 space-y-1" aria-label="Mobile navigation">
+            {visibleNavItems.map((item) => {
               const isActive = pathname === item.href;
               return (
                 <Link

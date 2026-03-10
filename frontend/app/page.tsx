@@ -8,6 +8,7 @@ import EpochHistory from "@/components/EpochHistory";
 import TransactionHistory from "@/components/TransactionHistory";
 import FaucetButton from "@/components/FaucetButton";
 import UserOptions from "@/components/UserOptions";
+import { IS_MAINNET } from "@/lib/stacks-config";
 
 export default function DashboardPage() {
   const { address, refreshKey, refresh } = useWallet();
@@ -25,7 +26,8 @@ export default function DashboardPage() {
               Deposit sBTC, earn yield through covered call options
             </p>
           </div>
-          <FaucetButton address={address} />
+          {/* Security: Hide faucet on mainnet — only show for testnet */}
+          {!IS_MAINNET && <FaucetButton address={address} />}
         </div>
       </div>
 

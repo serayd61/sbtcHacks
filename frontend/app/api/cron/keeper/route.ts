@@ -45,6 +45,16 @@ const PRICE_ENDPOINTS = {
 // Helpers
 // ============================================
 
+// H-6 FIX: Execution lock to prevent concurrent keeper runs
+let isExecuting = false;
+let lastExecutionTime = 0;
+const MIN_EXECUTION_INTERVAL_MS = 30_000; // 30 seconds cooldown
+
+// L-4 FIX: Rate limiting
+let requestCount = 0;
+let rateWindowStart = Date.now();
+const MAX_REQUESTS_PER_MINUTE = 6;
+
 let pendingNonce: bigint | null = null;
 
 async function getNextNonce(address: string): Promise<bigint> {
@@ -116,24 +126,49 @@ async function broadcast(opts: {
 // Price fetching
 // ============================================
 
+// Timeout for external API calls (10 seconds)
+const FETCH_TIMEOUT = 10_000;
+// Min/max BTC price sanity check (reject obviously wrong prices)
+const MIN_BTC_PRICE = 1_000;
+const MAX_BTC_PRICE = 1_000_000;
+
+function isValidPrice(price: number): boolean {
+  return typeof price === "number" && !isNaN(price) && price >= MIN_BTC_PRICE && price <= MAX_BTC_PRICE;
+}
+
 async function fetchMedianPrice(): Promise<number | null> {
-  const prices: number[] = [];
-  try {
-    const r = await fetch(PRICE_ENDPOINTS.coingecko);
-    if (r.ok) prices.push((await r.json()).bitcoin.usd);
-  } catch {}
-  try {
-    const r = await fetch(PRICE_ENDPOINTS.binance);
-    if (r.ok) prices.push(parseFloat((await r.json()).price));
-  } catch {}
-  try {
-    const r = await fetch(PRICE_ENDPOINTS.kraken);
-    if (r.ok) {
-      const d = await r.json();
-      const p = d.result?.XXBTZUSD || d.result?.XBTUSD;
-      if (p) prices.push(parseFloat(p.c[0]));
-    }
-  } catch {}
+  // Fetch all prices in parallel with timeouts
+  const results = await Promise.allSettled([
+    fetch(PRICE_ENDPOINTS.coingecko, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const price = (await r.json()).bitcoin?.usd;
+        if (!isValidPrice(price)) throw new Error(`Invalid price: ${price}`);
+        return price as number;
+      }),
+    fetch(PRICE_ENDPOINTS.binance, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const price = parseFloat((await r.json()).price);
+        if (!isValidPrice(price)) throw new Error(`Invalid price: ${price}`);
+        return price;
+      }),
+    fetch(PRICE_ENDPOINTS.kraken, { signal: AbortSignal.timeout(FETCH_TIMEOUT) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        const d = await r.json();
+        const p = d.result?.XXBTZUSD || d.result?.XBTUSD;
+        if (!p) throw new Error("No Kraken data");
+        const price = parseFloat(p.c[0]);
+        if (!isValidPrice(price)) throw new Error(`Invalid price: ${price}`);
+        return price;
+      }),
+  ]);
+
+  const prices = results
+    .filter((r): r is PromiseFulfilledResult<number> => r.status === "fulfilled")
+    .map((r) => r.value);
+
   if (prices.length < 2) return null;
   prices.sort((a, b) => a - b);
   const mid = Math.floor(prices.length / 2);
@@ -149,11 +184,33 @@ async function fetchMedianPrice(): Promise<number | null> {
 export const maxDuration = 60; // 60s for Pro plan
 
 export async function GET(request: Request) {
+  // C-4 FIX: CRON_SECRET is now MANDATORY — no unauthenticated access
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
+  // L-4 FIX: Rate limiting — max 6 requests per minute
+  const now = Date.now();
+  if (now - rateWindowStart > 60_000) {
+    requestCount = 0;
+    rateWindowStart = now;
+  }
+  requestCount++;
+  if (requestCount > MAX_REQUESTS_PER_MINUTE) {
+    return NextResponse.json({ error: "Rate limited" }, { status: 429 });
+  }
+
+  // H-6 FIX: Prevent concurrent execution
+  if (isExecuting) {
+    return NextResponse.json({ error: "Already executing", ok: false }, { status: 409 });
+  }
+  if (now - lastExecutionTime < MIN_EXECUTION_INTERVAL_MS) {
+    return NextResponse.json({ error: "Cooldown active", ok: false }, { status: 429 });
+  }
+  isExecuting = true;
+  lastExecutionTime = now;
 
   const logs: string[] = [];
   const log = (msg: string) => {
@@ -337,11 +394,18 @@ export async function GET(request: Request) {
       txIds,
       logs,
     });
-  } catch (error: any) {
-    log(`Fatal: ${error.message}`);
+  } catch (error: unknown) {
+    // C-5 FIX: Sanitize error messages — never leak private key or internal state
+    const safeMessage = error instanceof Error
+      ? error.message.replace(/[0-9a-fA-F]{32,}/g, "[REDACTED]")
+      : "Unknown error";
+    log(`Fatal: ${safeMessage}`);
     return NextResponse.json(
-      { ok: false, error: error.message, txIds, logs },
+      { ok: false, error: "Internal keeper error", txIds: txIds.length, logs: [`Error occurred — check server logs`] },
       { status: 500 }
     );
+  } finally {
+    // H-6 FIX: Always release the lock
+    isExecuting = false;
   }
 }
