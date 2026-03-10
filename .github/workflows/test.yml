@@ -39,7 +39,7 @@ jobs:
 
       - name: Install Clarinet
         run: |
-          curl -L https://github.com/hirosystems/clarinet/releases/latest/download/clarinet-linux-x64.tar.gz | tar xz
+          curl -L https://github.com/stx-labs/clarinet/releases/latest/download/clarinet-linux-x64-glibc.tar.gz | tar xz
           sudo mv clarinet /usr/local/bin/
 
       - name: Validate contracts
