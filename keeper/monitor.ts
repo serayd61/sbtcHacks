@@ -68,7 +68,7 @@ async function sendAlert(level: AlertLevel, message: string): Promise<void> {
 // API Helpers
 // ============================================
 
-async function callReadOnly(contract: string, fn: string, args: string[] = []): Promise<any> {
+async function callReadOnly(contract: string, fn: string, args: string[] = []): Promise<Record<string, unknown>> {
   const url = `${API_BASE}/v2/contracts/call-read/${DEPLOYER}/${contract}/${fn}`;
   const response = await fetch(url, {
     method: "POST",
@@ -115,8 +115,9 @@ async function checkOracleHealth(): Promise<void> {
     if (priceUsd === 0) {
       await sendAlert("critical", "Oracle returning $0 price — settlement will fail!");
     }
-  } catch (error: any) {
-    await sendAlert("critical", `Oracle health check failed: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await sendAlert("critical", `Oracle health check failed: ${msg}`);
   }
 }
 
@@ -159,8 +160,9 @@ async function checkVaultHealth(): Promise<void> {
     }
 
     previousVaultInfo = vault;
-  } catch (error: any) {
-    await sendAlert("warning", `Vault health check failed: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await sendAlert("warning", `Vault health check failed: ${msg}`);
   }
 }
 
@@ -187,24 +189,29 @@ async function checkKeeperBalance(): Promise<void> {
         `Keeper wallet low: ${balanceStx.toFixed(2)} STX (min: ${KEEPER_CONFIG.monitoring.keeperWalletMinStx / 1_000_000} STX)`
       );
     }
-  } catch (error: any) {
-    console.log(`  Keeper balance: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.log(`  Keeper balance: ${msg}`);
   }
 }
 
-async function checkNetworkStatus(): Promise<{ height: number; burnHeight: number } | null> {
+async function checkNetworkStatus(): Promise<{ height: number; tenureHeight: number; burnHeight: number } | null> {
   try {
     const response = await fetch(`${API_BASE}/v2/info`);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
     const data = await response.json();
     const height = data.stacks_tip_height;
+    const tenureHeight = data.tenure_height;
     const burnHeight = data.burn_block_height;
 
-    console.log(`  Network: Stacks #${height.toLocaleString()} | BTC #${burnHeight.toLocaleString()}`);
-    return { height, burnHeight };
-  } catch (error: any) {
-    await sendAlert("critical", `Stacks network unreachable: ${error.message}`);
+    // IMPORTANT: Clarity's block-height = tenure_height post-Nakamoto (~234K)
+    // stacks_tip_height (~7M) is NOT what contracts see
+    console.log(`  Network: Stacks #${height.toLocaleString()} | Tenure #${tenureHeight.toLocaleString()} (contract block-height) | BTC #${burnHeight.toLocaleString()}`);
+    return { height, tenureHeight, burnHeight };
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await sendAlert("critical", `Stacks network unreachable: ${msg}`);
     return null;
   }
 }

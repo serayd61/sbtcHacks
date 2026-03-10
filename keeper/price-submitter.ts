@@ -7,10 +7,15 @@
 // Runs every 10 minutes (configurable in config.ts)
 
 import { KEEPER_CONFIG, PRICE_ENDPOINTS, PriceSource } from "./config";
+import { broadcastTx, requirePrivateKey, DEPLOYER } from "./tx-sender";
 
 // ============================================
-// Price Fetching
+// Price Fetching (parallel with timeouts)
 // ============================================
+
+const FETCH_TIMEOUT_MS = 10_000; // 10 seconds per source
+const MIN_BTC_PRICE = 1_000; // $1K floor (reject garbage)
+const MAX_BTC_PRICE = 1_000_000; // $1M ceiling
 
 interface PriceFetchResult {
   source: PriceSource;
@@ -20,28 +25,44 @@ interface PriceFetchResult {
   error?: string;
 }
 
+function isValidPrice(price: number): boolean {
+  return typeof price === "number" && !isNaN(price) && price >= MIN_BTC_PRICE && price <= MAX_BTC_PRICE;
+}
+
 async function fetchCoinGeckoPrice(): Promise<number> {
-  const response = await fetch(PRICE_ENDPOINTS.coingecko);
+  const response = await fetch(PRICE_ENDPOINTS.coingecko, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`CoinGecko HTTP ${response.status}`);
   const data = await response.json();
-  return data.bitcoin.usd;
+  const price = data.bitcoin?.usd;
+  if (!isValidPrice(price)) throw new Error(`Invalid price: ${price}`);
+  return price;
 }
 
 async function fetchBinancePrice(): Promise<number> {
-  const response = await fetch(PRICE_ENDPOINTS.binance);
+  const response = await fetch(PRICE_ENDPOINTS.binance, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`Binance HTTP ${response.status}`);
   const data = await response.json();
-  return parseFloat(data.price);
+  const price = parseFloat(data.price);
+  if (!isValidPrice(price)) throw new Error(`Invalid price: ${price}`);
+  return price;
 }
 
 async function fetchKrakenPrice(): Promise<number> {
-  const response = await fetch(PRICE_ENDPOINTS.kraken);
+  const response = await fetch(PRICE_ENDPOINTS.kraken, {
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+  });
   if (!response.ok) throw new Error(`Kraken HTTP ${response.status}`);
   const data = await response.json();
   // Kraken returns: { result: { XXBTZUSD: { c: ["85000.0", "0.001"] } } }
   const pair = data.result?.XXBTZUSD || data.result?.XBTUSD;
   if (!pair) throw new Error("Kraken: unexpected response format");
-  return parseFloat(pair.c[0]); // Last trade close price
+  const price = parseFloat(pair.c[0]); // Last trade close price
+  if (!isValidPrice(price)) throw new Error(`Invalid price: ${price}`);
+  return price;
 }
 
 const PRICE_FETCHERS: Record<PriceSource, () => Promise<number>> = {
@@ -51,32 +72,23 @@ const PRICE_FETCHERS: Record<PriceSource, () => Promise<number>> = {
 };
 
 /**
- * Fetch prices from all configured sources
+ * Fetch prices from all sources in parallel (Promise.allSettled)
+ * Much faster than sequential — 3 fetches overlap instead of chaining
  */
 async function fetchAllPrices(): Promise<PriceFetchResult[]> {
-  const results: PriceFetchResult[] = [];
+  const sources = KEEPER_CONFIG.oracle.priceSources;
+  const settled = await Promise.allSettled(sources.map((s) => PRICE_FETCHERS[s]()));
 
-  for (const source of KEEPER_CONFIG.oracle.priceSources) {
-    try {
-      const price = await PRICE_FETCHERS[source]();
-      results.push({
-        source,
-        price,
-        timestamp: Date.now(),
-        success: true,
-      });
-      console.log(`  [${source}] $${price.toLocaleString()}`);
-    } catch (error: any) {
-      results.push({
-        source,
-        price: 0,
-        timestamp: Date.now(),
-        success: false,
-        error: error.message,
-      });
-      console.warn(`  [${source}] FAILED: ${error.message}`);
+  const results: PriceFetchResult[] = sources.map((source, i) => {
+    const result = settled[i];
+    if (result.status === "fulfilled") {
+      console.log(`  [${source}] $${result.value.toLocaleString()}`);
+      return { source, price: result.value, timestamp: Date.now(), success: true };
     }
-  }
+    const errorMsg = result.reason instanceof Error ? result.reason.message : String(result.reason);
+    console.warn(`  [${source}] FAILED: ${errorMsg}`);
+    return { source, price: 0, timestamp: Date.now(), success: false, error: errorMsg };
+  });
 
   return results;
 }
@@ -120,43 +132,60 @@ function priceToOnChain(usdPrice: number): bigint {
 }
 
 /**
+ * Read current on-chain oracle price to check tolerance
+ * Returns price in on-chain format (6 decimals) or null if unavailable
+ */
+async function getCurrentOraclePrice(): Promise<bigint | null> {
+  try {
+    const url = `${KEEPER_CONFIG.stacksApiUrl}/v2/contracts/call-read/${DEPLOYER}/${KEEPER_CONFIG.contracts.priceOracleV2}/get-btc-price-unchecked`;
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: DEPLOYER, arguments: [] }),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    });
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (!data.okay || !data.result) return null;
+    // Parse uint from Clarity hex: 0x01 + 16 bytes big-endian
+    const hex = data.result.startsWith("0x") ? data.result.slice(2) : data.result;
+    // Skip first byte (type prefix 0x01 for uint)
+    const valueHex = hex.slice(2);
+    return BigInt("0x" + valueHex);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Check if new price deviates enough from on-chain price to justify a TX
+ * Uses toleranceBps from config (default 200 = 2%)
+ */
+function isPriceDeviationSignificant(newPrice: bigint, currentPrice: bigint): boolean {
+  if (currentPrice === 0n) return true; // First price, always submit
+  const diff = newPrice > currentPrice ? newPrice - currentPrice : currentPrice - newPrice;
+  const threshold = (currentPrice * BigInt(KEEPER_CONFIG.oracle.toleranceBps)) / 10_000n;
+  return diff >= threshold;
+}
+
+/**
  * Submit price to on-chain oracle
- * Uses @stacks/transactions (install separately)
+ * Uses shared tx-sender for nonce management
  */
 async function submitPriceOnChain(price: bigint): Promise<string> {
-  // Dynamic import to avoid requiring stacks deps when not needed
-  const { makeContractCall, broadcastTransaction, uintCV, AnchorMode } = await import(
-    "@stacks/transactions"
-  );
-  const { StacksMainnet, StacksTestnet } = await import("@stacks/network");
+  const { uintCV, AnchorMode } = await import("@stacks/transactions");
 
-  const privateKey = process.env.KEEPER_PRIVATE_KEY;
-  if (!privateKey) {
-    throw new Error("KEEPER_PRIVATE_KEY environment variable required");
-  }
+  const privateKey = await requirePrivateKey();
 
-  const network =
-    KEEPER_CONFIG.network === "mainnet" ? new StacksMainnet() : new StacksTestnet();
-
-  const txOptions = {
+  return broadcastTx({
     contractAddress: KEEPER_CONFIG.deployerAddress,
     contractName: KEEPER_CONFIG.contracts.priceOracleV2,
-    functionName: "submit-price",
+    functionName: "set-btc-price",
     functionArgs: [uintCV(price)],
     senderKey: privateKey,
-    network,
     anchorMode: AnchorMode.Any,
-    fee: 5000n, // 0.005 STX
-  };
-
-  const tx = await makeContractCall(txOptions);
-  const result = await broadcastTransaction({ transaction: tx, network });
-
-  if ("error" in result) {
-    throw new Error(`Broadcast failed: ${result.error} - ${result.reason}`);
-  }
-
-  return typeof result === "string" ? result : result.txid;
+    fee: 5000n,
+  });
 }
 
 // ============================================
@@ -178,8 +207,9 @@ async function sendAlert(message: string): Promise<void> {
         content: `[sBTC Vault Keeper] ${message}`,
       }),
     });
-  } catch (error) {
-    console.error("Failed to send alert:", error);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error("Failed to send alert:", msg);
   }
 }
 
@@ -201,16 +231,28 @@ async function runPriceUpdate(): Promise<void> {
   const onChainPrice = priceToOnChain(medianPrice);
   console.log(`  Median: $${medianPrice.toLocaleString()} -> on-chain: ${onChainPrice}`);
 
-  // Check if we should submit (only if price changed significantly)
+  // Tolerance check: skip TX if price hasn't moved significantly
+  const currentOnChain = await getCurrentOraclePrice();
+  if (currentOnChain !== null) {
+    console.log(`  On-chain: ${currentOnChain} ($${(Number(currentOnChain) / 1_000_000).toLocaleString()})`);
+    if (!isPriceDeviationSignificant(onChainPrice, currentOnChain)) {
+      console.log(`  Price within ${KEEPER_CONFIG.oracle.toleranceBps / 100}% tolerance — skipping TX (saves gas)`);
+      return;
+    }
+    const deviationPct = Math.abs(Number(onChainPrice - currentOnChain)) / Number(currentOnChain) * 100;
+    console.log(`  Deviation: ${deviationPct.toFixed(2)}% — submitting update`);
+  }
+
   try {
     const txId = await submitPriceOnChain(onChainPrice);
     console.log(`  Submitted! TX: ${txId}`);
-  } catch (error: any) {
-    if (error.message.includes("KEEPER_PRIVATE_KEY")) {
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    if (msg.includes("KEEPER_PRIVATE_KEY")) {
       console.log("  [DRY RUN] No private key set - skipping on-chain submission");
     } else {
-      console.error(`  Submit failed: ${error.message}`);
-      await sendAlert(`Price submission failed: ${error.message}`);
+      console.error(`  Submit failed: ${msg}`);
+      await sendAlert(`Price submission failed: ${msg}`);
     }
   }
 }
@@ -238,9 +280,19 @@ async function main(): Promise<void> {
 }
 
 // Run if called directly
-main().catch((err) => {
-  console.error("Keeper fatal error:", err);
-  process.exit(1);
-});
+const isMain = process.argv[1]?.includes("price-submitter");
+if (isMain) {
+  main().catch((err) => {
+    console.error("Keeper fatal error:", err);
+    process.exit(1);
+  });
+}
 
-export { fetchAllPrices, calculateMedianPrice, priceToOnChain, runPriceUpdate };
+export {
+  fetchAllPrices,
+  calculateMedianPrice,
+  priceToOnChain,
+  runPriceUpdate,
+  getCurrentOraclePrice,
+  isPriceDeviationSignificant,
+};

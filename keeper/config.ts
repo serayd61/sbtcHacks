@@ -4,7 +4,7 @@
 export const KEEPER_CONFIG = {
   // Stacks network
   network: "mainnet" as "mainnet" | "testnet",
-  stacksApiUrl: "https://api.hiro.so",
+  stacksApiUrl: "https://api.mainnet.hiro.so",
 
   // Contract addresses
   deployerAddress: "SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W",
@@ -12,6 +12,7 @@ export const KEEPER_CONFIG = {
     priceOracleV2: "price-oracle-v2",
     vaultLogicV2: "vault-logic-v2",
     vaultDataV1: "vault-data-v1",
+    optionsMarketV2: "options-market-v2",
     mockSbtc: "mock-sbtc",
   },
 

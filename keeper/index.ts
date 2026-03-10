@@ -18,6 +18,7 @@ import { KEEPER_CONFIG } from "./config";
 import { runPriceUpdate } from "./price-submitter";
 import { checkAndManageEpoch } from "./epoch-manager";
 import { runHealthCheck } from "./monitor";
+import { resetNonceTracker } from "./tx-sender";
 
 // ============================================
 // Scheduling
@@ -76,9 +77,12 @@ async function main(): Promise<void> {
     console.log();
   }
 
-  // ---- Initial runs (sequential to avoid rate limits) ----
+  // ---- Initial runs (sequential, shared nonce tracker) ----
   console.log("═══ Initial Health Check ═══");
   await runHealthCheck();
+
+  // Reset nonce before TX-producing runs so price + epoch share one nonce sequence
+  resetNonceTracker();
 
   console.log("\n═══ Initial Price Update ═══");
   await runPriceUpdate();
@@ -90,13 +94,19 @@ async function main(): Promise<void> {
   console.log("\n═══ Scheduling Services ═══");
 
   setTimeout(() => {
-    const priceInterval = setInterval(runPriceUpdate, INTERVALS.priceUpdate);
+    const priceInterval = setInterval(() => {
+      resetNonceTracker();
+      runPriceUpdate();
+    }, INTERVALS.priceUpdate);
     intervals.push(priceInterval);
     console.log(`  [price-submitter] Scheduled every ${INTERVALS.priceUpdate / 60000} min`);
   }, 0);
 
   setTimeout(() => {
-    const epochInterval = setInterval(checkAndManageEpoch, INTERVALS.epochCheck);
+    const epochInterval = setInterval(() => {
+      resetNonceTracker();
+      checkAndManageEpoch();
+    }, INTERVALS.epochCheck);
     intervals.push(epochInterval);
     console.log(`  [epoch-manager] Scheduled every ${INTERVALS.epochCheck / 60000} min`);
   }, STAGGER_MS);

@@ -8,6 +8,7 @@ import {
   cvToJSON,
   serializeCV,
   getAddressFromPrivateKey,
+  type ClarityValue,
 } from "@stacks/transactions";
 import { STACKS_MAINNET } from "@stacks/network";
 
@@ -40,6 +41,9 @@ const PRICE_ENDPOINTS = {
   binance: "https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT",
   kraken: "https://api.kraken.com/0/public/Ticker?pair=XBTUSD",
 };
+
+// Tolerance: skip price TX if deviation < 2% (saves gas)
+const TOLERANCE_BPS = 200;
 
 // ============================================
 // Helpers
@@ -78,7 +82,7 @@ function resolvePrivateKey(): string | null {
   return hex;
 }
 
-async function readOnly(contract: string, fn: string, args: any[] = []) {
+async function readOnly(contract: string, fn: string, args: ClarityValue[] = []) {
   const serializedArgs = args.map((a) => `0x${serializeCV(a)}`);
   const url = `${API_BASE}/v2/contracts/call-read/${DEPLOYER}/${contract}/${encodeURIComponent(fn)}`;
   const res = await fetch(url, {
@@ -95,7 +99,7 @@ async function readOnly(contract: string, fn: string, args: any[] = []) {
 async function broadcast(opts: {
   contractName: string;
   functionName: string;
-  functionArgs: any[];
+  functionArgs: ClarityValue[];
   senderKey: string;
 }): Promise<string> {
   const address = getAddressFromPrivateKey(opts.senderKey, STACKS_MAINNET);
@@ -114,12 +118,13 @@ async function broadcast(opts: {
     transaction: tx,
     network: STACKS_MAINNET,
   });
-  if (typeof result === "object" && "error" in result) {
+  if (typeof result === "object" && result !== null && "error" in result) {
+    const errObj = result as Record<string, unknown>;
     throw new Error(
-      `Broadcast: ${(result as any).error} — ${(result as any).reason}`
+      `Broadcast: ${errObj.error} — ${errObj.reason}`
     );
   }
-  return typeof result === "string" ? result : result.txid;
+  return typeof result === "string" ? result : (result as { txid: string }).txid;
 }
 
 // ============================================
@@ -175,6 +180,100 @@ async function fetchMedianPrice(): Promise<number | null> {
   return prices.length % 2 === 0
     ? (prices[mid - 1] + prices[mid]) / 2
     : prices[mid];
+}
+
+// ============================================
+// Oracle tolerance check
+// ============================================
+
+async function getCurrentOraclePrice(): Promise<bigint | null> {
+  try {
+    const result = await readOnly(CONTRACTS.oracle, "get-btc-price-unchecked");
+    if (!result) return null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const val = (result as any)?.value;
+    if (val === undefined || val === null) return null;
+    return BigInt(val);
+  } catch {
+    return null;
+  }
+}
+
+function isPriceDeviationSignificant(newPrice: bigint, currentPrice: bigint): boolean {
+  if (currentPrice === 0n) return true;
+  const diff = newPrice > currentPrice ? newPrice - currentPrice : currentPrice - newPrice;
+  const threshold = (currentPrice * BigInt(TOLERANCE_BPS)) / 10_000n;
+  return diff >= threshold;
+}
+
+// ============================================
+// Epoch start helper (shared between settle-then-start and standalone start)
+// ============================================
+
+async function startNewEpochAndListing(opts: {
+  btcPrice: number;
+  currentEpochId: bigint;
+  totalDeposited: bigint;
+  tenureHeight: bigint;
+  privateKey: string;
+  log: (msg: string) => void;
+  txIds: string[];
+}): Promise<void> {
+  const { btcPrice, currentEpochId, totalDeposited, tenureHeight, privateKey, log, txIds } = opts;
+
+  const strikeUsd = btcPrice * (1 + EPOCH_CONFIG.strikeOtmPercent / 100);
+  const strike = BigInt(Math.round(strikeUsd * 1_000_000));
+  const duration = EPOCH_CONFIG.durationBlocks;
+  const premiumSats = BigInt(
+    Math.round(Number(totalDeposited) * EPOCH_CONFIG.premiumPct)
+  );
+
+  log(
+    `Starting new epoch: strike=$${strikeUsd.toLocaleString()} | premium=${(Number(premiumSats) / 1e8).toFixed(4)} sBTC | duration=${duration} blocks`
+  );
+
+  try {
+    // Step 1: start-epoch
+    const txId = await broadcast({
+      contractName: CONTRACTS.vault,
+      functionName: "start-epoch",
+      functionArgs: [
+        uintCV(strike),
+        uintCV(premiumSats),
+        uintCV(duration),
+      ],
+      senderKey: privateKey,
+    });
+    log(`Start epoch TX: ${txId}`);
+    txIds.push(txId);
+
+    // Step 2: create-listing on market
+    // Nonce ordering ensures start-epoch executes before create-listing
+    const newEpochId = currentEpochId + 1n;
+    const expiryBlock = tenureHeight + BigInt(duration);
+    try {
+      const listingTx = await broadcast({
+        contractName: CONTRACTS.market,
+        functionName: "create-listing",
+        functionArgs: [
+          uintCV(newEpochId),
+          uintCV(strike),
+          uintCV(premiumSats),
+          uintCV(totalDeposited),
+          uintCV(expiryBlock),
+        ],
+        senderKey: privateKey,
+      });
+      log(`Create listing TX: ${listingTx}`);
+      txIds.push(listingTx);
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      log(`Create listing failed: ${msg}`);
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    log(`Start epoch failed: ${msg}`);
+  }
 }
 
 // ============================================
@@ -234,32 +333,50 @@ export async function GET(request: Request) {
     const onChainPrice = BigInt(Math.round(btcPrice * 1_000_000));
     log(`BTC/USD: $${btcPrice.toLocaleString()} → on-chain: ${onChainPrice}`);
 
-    // 2. Update oracle price
-    if (!dryRun) {
-      try {
-        const txId = await broadcast({
-          contractName: CONTRACTS.oracle,
-          functionName: "set-btc-price",
-          functionArgs: [uintCV(onChainPrice)],
-          senderKey: privateKey,
-        });
-        log(`Oracle price updated: ${txId}`);
-        txIds.push(txId);
-      } catch (e: any) {
-        log(`Oracle update failed: ${e.message}`);
+    // 2. Tolerance check: skip oracle TX if price hasn't moved significantly
+    const currentOraclePrice = await getCurrentOraclePrice();
+    let priceSkipped = false;
+
+    if (currentOraclePrice !== null) {
+      log(`Current oracle: ${currentOraclePrice} ($${(Number(currentOraclePrice) / 1_000_000).toLocaleString()})`);
+
+      if (!isPriceDeviationSignificant(onChainPrice, currentOraclePrice)) {
+        const deviationPct = Math.abs(Number(onChainPrice - currentOraclePrice)) / Number(currentOraclePrice) * 100;
+        log(`Price within ${TOLERANCE_BPS / 100}% tolerance (${deviationPct.toFixed(2)}%) — skipping oracle TX (saves gas)`);
+        priceSkipped = true;
       }
-    } else {
-      log("[dry] Would update oracle price");
     }
 
-    // 3. Read vault state
+    // 3. Update oracle price (only if deviation is significant)
+    if (!priceSkipped) {
+      if (!dryRun) {
+        try {
+          const txId = await broadcast({
+            contractName: CONTRACTS.oracle,
+            functionName: "set-btc-price",
+            functionArgs: [uintCV(onChainPrice)],
+            senderKey: privateKey,
+          });
+          log(`Oracle price updated: ${txId}`);
+          txIds.push(txId);
+        } catch (e: unknown) {
+          const msg = e instanceof Error ? e.message : String(e);
+          log(`Oracle update failed: ${msg}`);
+        }
+      } else {
+        log("[dry] Would update oracle price");
+      }
+    }
+
+    // 4. Read vault state
     const vaultResult = await readOnly(CONTRACTS.vault, "get-vault-info");
     if (!vaultResult) {
       log("Failed to read vault info");
       return NextResponse.json({ ok: false, logs, txIds });
     }
 
-    const v = vaultResult.value.value;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (vaultResult as any).value.value;
     const activeEpoch: boolean = v["active-epoch"].value;
     const currentEpochId = BigInt(v["current-epoch-id"].value);
     const totalDeposited = BigInt(v["total-sbtc-deposited"].value);
@@ -274,7 +391,7 @@ export async function GET(request: Request) {
       return NextResponse.json({ ok: true, dryRun, btcPrice, logs, txIds });
     }
 
-    // 4. Get current block height
+    // 5. Get current block height
     // IMPORTANT: Clarity's `block-height` = tenure_height (not stacks_tip_height)
     // post-Nakamoto. The contract checks expiry against tenure_height.
     const infoRes = await fetch(`${API_BASE}/v2/info`);
@@ -283,13 +400,16 @@ export async function GET(request: Request) {
     const stacksHeight = BigInt(info.stacks_tip_height);
     log(`Tenure height: #${tenureHeight} | Stacks height: #${stacksHeight}`);
 
-    // 5. Handle active epoch — check if expired
+    // 6. Handle active epoch — check if expired
+    let justSettled = false;
+
     if (activeEpoch && currentEpochId > 0n) {
       const epochResult = await readOnly(CONTRACTS.vault, "get-epoch", [
         uintCV(currentEpochId),
       ]);
-      if (epochResult?.value) {
-        const ep = epochResult.value.value || epochResult.value;
+      if (epochResult) {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const ep = (epochResult as any).value?.value || (epochResult as any).value;
         const expiryBlock = BigInt(ep["expiry-block"].value);
         const settled: boolean = ep.settled.value;
 
@@ -308,78 +428,50 @@ export async function GET(request: Request) {
               });
               log(`Settled epoch #${currentEpochId}: ${txId}`);
               txIds.push(txId);
-            } catch (e: any) {
-              log(`Settle failed: ${e.message}`);
+              justSettled = true;
+            } catch (e: unknown) {
+              const msg = e instanceof Error ? e.message : String(e);
+              log(`Settle failed: ${msg}`);
             }
           } else {
             log("[dry] Would settle expired epoch");
+            justSettled = true; // Simulate for dry run flow
           }
         } else if (!settled) {
           const remaining = expiryBlock - tenureHeight;
           const hours = (Number(remaining) * 10) / 60;
           log(`Epoch active — ${remaining} blocks remaining (~${hours.toFixed(1)}h)`);
         } else {
-          log("Epoch already settled — will start new one next cycle");
+          log("Epoch already settled — will start new one");
+          justSettled = true; // Settled in a previous cycle, start new one now
         }
       }
     }
 
-    // 6. Start new epoch if no active epoch + has deposits
-    if (!activeEpoch && totalDeposited > 0n) {
-      const strikeUsd =
-        btcPrice * (1 + EPOCH_CONFIG.strikeOtmPercent / 100);
-      const strike = BigInt(Math.round(strikeUsd * 1_000_000));
-      const duration = EPOCH_CONFIG.durationBlocks;
-      const premiumSats = BigInt(
-        Math.round(Number(totalDeposited) * EPOCH_CONFIG.premiumPct)
-      );
+    // 7. Start new epoch if eligible
+    // Triggers when: (a) no active epoch from the start, OR (b) just settled in this cycle
+    // When justSettled=true, nonce ordering ensures settle TX executes first
+    const shouldStartNew = (!activeEpoch || justSettled) && totalDeposited > 0n;
 
-      log(
-        `Starting new epoch: strike=$${strikeUsd.toLocaleString()} | premium=${(Number(premiumSats) / 1e8).toFixed(4)} sBTC | duration=${duration} blocks`
-      );
+    if (shouldStartNew) {
+      if (justSettled && activeEpoch) {
+        log("Settle + start in same cycle — using consecutive nonces");
+      }
 
       if (!dryRun) {
-        try {
-          // Step 1: start-epoch
-          const txId = await broadcast({
-            contractName: CONTRACTS.vault,
-            functionName: "start-epoch",
-            functionArgs: [
-              uintCV(strike),
-              uintCV(premiumSats),
-              uintCV(duration),
-            ],
-            senderKey: privateKey,
-          });
-          log(`Start epoch TX: ${txId}`);
-          txIds.push(txId);
-
-          // Step 2: create-listing on market
-          const newEpochId = currentEpochId + 1n;
-          const expiryBlock = tenureHeight + BigInt(duration);
-          try {
-            const listingTx = await broadcast({
-              contractName: CONTRACTS.market,
-              functionName: "create-listing",
-              functionArgs: [
-                uintCV(newEpochId),
-                uintCV(strike),
-                uintCV(premiumSats),
-                uintCV(totalDeposited),
-                uintCV(expiryBlock),
-              ],
-              senderKey: privateKey,
-            });
-            log(`Create listing TX: ${listingTx}`);
-            txIds.push(listingTx);
-          } catch (e: any) {
-            log(`Create listing failed: ${e.message}`);
-          }
-        } catch (e: any) {
-          log(`Start epoch failed: ${e.message}`);
-        }
+        await startNewEpochAndListing({
+          btcPrice,
+          currentEpochId,
+          totalDeposited,
+          tenureHeight,
+          privateKey,
+          log,
+          txIds,
+        });
       } else {
-        log("[dry] Would start epoch + create listing");
+        const strikeUsd = btcPrice * (1 + EPOCH_CONFIG.strikeOtmPercent / 100);
+        const premiumSats = BigInt(Math.round(Number(totalDeposited) * EPOCH_CONFIG.premiumPct));
+        log(`[dry] Would start epoch: strike=$${strikeUsd.toLocaleString()} | premium=${(Number(premiumSats) / 1e8).toFixed(4)} sBTC + create listing`);
       }
     } else if (!activeEpoch && totalDeposited === 0n) {
       log("No deposits in vault — waiting");
@@ -391,6 +483,7 @@ export async function GET(request: Request) {
       block: Number(tenureHeight),
       btcPrice,
       dryRun,
+      priceSkipped,
       txIds,
       logs,
     });

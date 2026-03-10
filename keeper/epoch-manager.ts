@@ -35,7 +35,7 @@ interface VaultState {
 
 const API_BASE = KEEPER_CONFIG.stacksApiUrl;
 
-async function callReadOnly(contract: string, fn: string, args: string[] = []): Promise<any> {
+async function callReadOnly(contract: string, fn: string, args: string[] = []): Promise<Record<string, unknown>> {
   const url = `${API_BASE}/v2/contracts/call-read/${DEPLOYER}/${contract}/${fn}`;
   const response = await fetch(url, {
     method: "POST",
@@ -327,8 +327,9 @@ async function checkAndManageEpoch(): Promise<void> {
         console.log("  Auto-start disabled — waiting for manual start");
       }
     }
-  } catch (error: any) {
-    console.error(`  Error: ${error.message}`);
+  } catch (error: unknown) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`  Error: ${msg}`);
   }
 }
 

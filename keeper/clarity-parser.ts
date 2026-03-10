@@ -26,7 +26,9 @@ const CLARITY_STRING_UTF8 = 0x0e;
 /**
  * Parse a Clarity hex result string into a JS value
  */
-export function parseClarityHex(hex: string): any {
+export type ClarityJSValue = bigint | boolean | string | null | ClarityJSValue[] | { error: ClarityJSValue } | Record<string, ClarityJSValue>;
+
+export function parseClarityHex(hex: string): ClarityJSValue {
   // Strip 0x prefix
   const clean = hex.startsWith("0x") ? hex.slice(2) : hex;
   const bytes = Buffer.from(clean, "hex");
@@ -34,7 +36,7 @@ export function parseClarityHex(hex: string): any {
   return value;
 }
 
-function parseValue(bytes: Buffer, offset: number): { value: any; nextOffset: number } {
+function parseValue(bytes: Buffer, offset: number): { value: ClarityJSValue; nextOffset: number } {
   const type = bytes[offset];
   offset++;
 
@@ -112,7 +114,7 @@ function parseValue(bytes: Buffer, offset: number): { value: any; nextOffset: nu
       const fieldCount = bytes.readUInt32BE(offset);
       offset += 4;
 
-      const result: Record<string, any> = {};
+      const result: Record<string, ClarityJSValue> = {};
       for (let i = 0; i < fieldCount; i++) {
         // Field name: 1-byte length + name bytes
         const nameLen = bytes[offset];
@@ -133,7 +135,7 @@ function parseValue(bytes: Buffer, offset: number): { value: any; nextOffset: nu
       const count = bytes.readUInt32BE(offset);
       offset += 4;
 
-      const items: any[] = [];
+      const items: ClarityJSValue[] = [];
       for (let i = 0; i < count; i++) {
         const item = parseValue(bytes, offset);
         items.push(item.value);
@@ -213,17 +215,17 @@ export interface ParsedVaultInfo {
 }
 
 export function parseVaultInfo(hex: string): ParsedVaultInfo {
-  const data = parseClarityHex(hex);
+  const data = parseClarityHex(hex) as Record<string, ClarityJSValue>;
   return {
-    totalShares: BigInt(data["total-shares"] ?? 0),
-    totalSbtcDeposited: BigInt(data["total-sbtc-deposited"] ?? 0),
-    currentEpochId: BigInt(data["current-epoch-id"] ?? 0),
+    totalShares: BigInt(data["total-shares"] as bigint ?? 0),
+    totalSbtcDeposited: BigInt(data["total-sbtc-deposited"] as bigint ?? 0),
+    currentEpochId: BigInt(data["current-epoch-id"] as bigint ?? 0),
     activeEpoch: Boolean(data["active-epoch"]),
     vaultPaused: Boolean(data["vault-paused"]),
-    sharePrice: BigInt(data["share-price"] ?? 0),
-    totalPremiumsEarned: BigInt(data["total-premiums-earned"] ?? 0),
-    totalEpochsCompleted: BigInt(data["total-epochs-completed"] ?? 0),
-    totalFeesCollected: BigInt(data["total-fees-collected"] ?? 0),
+    sharePrice: BigInt(data["share-price"] as bigint ?? 0),
+    totalPremiumsEarned: BigInt(data["total-premiums-earned"] as bigint ?? 0),
+    totalEpochsCompleted: BigInt(data["total-epochs-completed"] as bigint ?? 0),
+    totalFeesCollected: BigInt(data["total-fees-collected"] as bigint ?? 0),
   };
 }
 
@@ -244,17 +246,18 @@ export function parseEpochInfo(hex: string): ParsedEpochInfo | null {
   const data = parseClarityHex(hex);
   if (data === null) return null; // none response
 
+  const d = data as Record<string, ClarityJSValue>;
   return {
-    strikePrice: BigInt(data["strike-price"] ?? 0),
-    premium: BigInt(data["premium"] ?? 0),
-    collateral: BigInt(data["collateral"] ?? 0),
-    startBlock: BigInt(data["start-block"] ?? 0),
-    expiryBlock: BigInt(data["expiry-block"] ?? 0),
-    settled: Boolean(data["settled"]),
-    settlementPrice: BigInt(data["settlement-price"] ?? 0),
-    premiumEarned: BigInt(data["premium-earned"] ?? 0),
-    payout: BigInt(data["payout"] ?? 0),
-    outcome: String(data["outcome"] ?? "N/A"),
+    strikePrice: BigInt(d["strike-price"] as bigint ?? 0),
+    premium: BigInt(d["premium"] as bigint ?? 0),
+    collateral: BigInt(d["collateral"] as bigint ?? 0),
+    startBlock: BigInt(d["start-block"] as bigint ?? 0),
+    expiryBlock: BigInt(d["expiry-block"] as bigint ?? 0),
+    settled: Boolean(d["settled"]),
+    settlementPrice: BigInt(d["settlement-price"] as bigint ?? 0),
+    premiumEarned: BigInt(d["premium-earned"] as bigint ?? 0),
+    payout: BigInt(d["payout"] as bigint ?? 0),
+    outcome: String(d["outcome"] ?? "N/A"),
   };
 }
 
@@ -268,13 +271,13 @@ export interface ParsedOracleInfo {
 }
 
 export function parseOracleInfo(hex: string): ParsedOracleInfo {
-  const data = parseClarityHex(hex);
+  const data = parseClarityHex(hex) as Record<string, ClarityJSValue>;
   return {
-    price: BigInt(data["price"] ?? 0),
-    currentRound: BigInt(data["current-round"] ?? 0),
-    lastUpdateBlock: BigInt(data["last-update-block"] ?? 0),
-    submitterCount: BigInt(data["submitter-count"] ?? 0),
-    toleranceBps: BigInt(data["tolerance-bps"] ?? 0),
+    price: BigInt(data["price"] as bigint ?? 0),
+    currentRound: BigInt(data["current-round"] as bigint ?? 0),
+    lastUpdateBlock: BigInt(data["last-update-block"] as bigint ?? 0),
+    submitterCount: BigInt(data["submitter-count"] as bigint ?? 0),
+    toleranceBps: BigInt(data["tolerance-bps"] as bigint ?? 0),
     isStale: Boolean(data["is-stale"]),
   };
 }
