@@ -11,6 +11,9 @@ import { CONTRACTS, DEPLOYER_ADDRESS, formatSBTC, formatUSD, ONE_SBTC, network }
 import { getOracleInfo, getEpoch } from "@/lib/vault-calls";
 import { withRetry } from "@/lib/retry";
 import { useToast } from "@/components/Toast";
+import { InfoTip } from "@/components/ui/Tooltip";
+import { estimateBlocksRemaining } from "@/lib/block-time";
+import { getChainInfo } from "@/lib/hiro-api";
 import type { Listing, OracleInfo, Epoch } from "@/lib/types";
 
 interface UserOptionsProps {
@@ -27,6 +30,7 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
   const [epochs, setEpochs] = useState<Map<number, Epoch>>(new Map());
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<number | null>(null);
+  const [currentBlock, setCurrentBlock] = useState<number | null>(null);
   const { showToast } = useToast();
 
   useEffect(() => {
@@ -38,7 +42,9 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
     async function load() {
       setLoading(true);
       try {
-        const [oracleInfo, countResult] = await Promise.all([
+        // Fetch block height, oracle, and listing count in parallel
+        const [chainInfo, oracleInfo, countResult] = await Promise.all([
+          getChainInfo().catch(() => null),
           withRetry(() => getOracleInfo()),
           withRetry(() =>
             fetchCallReadOnlyFunction({
@@ -51,6 +57,7 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
             })
           ),
         ]);
+        if (chainInfo) setCurrentBlock(chainInfo.tenureHeight);
         setOracle(oracleInfo);
         const count = Number(cvToJSON(countResult).value);
 
@@ -87,7 +94,6 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
                   claimed: v.claimed.value,
                 };
                 items.push(listing);
-                // Fetch epoch data for P&L
                 const eid = Number(listing.epochId);
                 if (!epochMap.has(eid)) {
                   const ep = await withRetry(() => getEpoch(eid));
@@ -129,7 +135,28 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
     setPendingId(null);
   };
 
-  if (!address || loading) return null;
+  // Don't render anything if no wallet connected or still loading
+  if (!address) return null;
+
+  if (loading) {
+    return (
+      <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/10 rounded-xl p-6 border border-blue-500/20">
+        <div className="h-5 w-32 bg-gray-800 rounded animate-pulse mb-4" />
+        <div className="space-y-3">
+          <div className="bg-gray-800/50 rounded-lg p-4 animate-pulse">
+            <div className="h-4 w-48 bg-gray-700 rounded mb-3" />
+            <div className="grid grid-cols-4 gap-2">
+              <div className="h-8 bg-gray-700 rounded" />
+              <div className="h-8 bg-gray-700 rounded" />
+              <div className="h-8 bg-gray-700 rounded" />
+              <div className="h-8 bg-gray-700 rounded" />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   if (myOptions.length === 0) return null;
 
   const currentPrice = oracle ? Number(oracle.price) : 0;
@@ -137,7 +164,10 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
   return (
     <div className="bg-gradient-to-r from-blue-500/5 to-purple-500/10 rounded-xl p-6 border border-blue-500/20">
       <div className="flex items-center justify-between mb-4">
-        <h2 className="text-lg font-semibold text-blue-400">Your Options</h2>
+        <div className="flex items-center">
+          <h2 className="text-lg font-semibold text-blue-400">Your Options</h2>
+          <InfoTip text="Options you've purchased. Active options are waiting for expiry. Settled options with ITM outcome can be claimed for payout." />
+        </div>
         <span className="text-xs text-gray-500">
           {myOptions.length} position{myOptions.length !== 1 ? "s" : ""}
         </span>
@@ -150,6 +180,7 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
           const currentUsd = currentPrice / 1_000_000;
           const premiumSbtc = Number(opt.premium) / ONE_SBTC;
           const collateralSbtc = Number(opt.collateral) / ONE_SBTC;
+          const expiryBlock = Number(opt.expiryBlock);
 
           // P&L calculation for call option
           const isItm = currentUsd > strikeUsd;
@@ -158,6 +189,12 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
             : 0;
           const pnl = intrinsicValue - premiumSbtc;
           const pnlPercent = premiumSbtc > 0 ? (pnl / premiumSbtc) * 100 : 0;
+
+          // Time remaining
+          const timeRemaining = currentBlock
+            ? estimateBlocksRemaining(currentBlock, expiryBlock)
+            : null;
+          const isExpired = currentBlock ? expiryBlock <= currentBlock : false;
 
           // Status
           let status: string;
@@ -168,6 +205,9 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
           } else if (epoch?.settled) {
             status = "Ready to Claim";
             statusClass = "bg-green-900/30 text-green-400 border-green-500/20";
+          } else if (isExpired) {
+            status = "Awaiting Settlement";
+            statusClass = "bg-yellow-900/30 text-yellow-400 border-yellow-500/20";
           } else {
             status = "Active";
             statusClass = "bg-blue-900/30 text-blue-400 border-blue-500/20";
@@ -206,7 +246,10 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
                   <p className="text-white font-medium">{formatUSD(BigInt(currentPrice))}</p>
                 </div>
                 <div>
-                  <p className="text-gray-500 text-xs">Unrealized P&L</p>
+                  <p className="text-gray-500 text-xs flex items-center">
+                    Unrealized P&L
+                    <InfoTip text="Estimated profit/loss based on current BTC price vs. strike price, minus the premium you paid." />
+                  </p>
                   <p className={`font-bold ${pnl >= 0 ? "text-green-400" : "text-red-400"}`}>
                     {pnl >= 0 ? "+" : ""}{pnl.toFixed(4)} sBTC
                     <span className="text-xs ml-1 opacity-70">
@@ -226,7 +269,9 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
                   <div className="flex justify-between text-sm">
                     <span className="text-gray-400">Outcome</span>
                     <span className={`font-medium ${epoch.outcome === "otm" || epoch.outcome === "OTM" ? "text-red-400" : "text-green-400"}`}>
-                      {epoch.outcome === "otm" || epoch.outcome === "OTM" ? "OTM (Expired)" : "ITM (In the Money)"}
+                      {epoch.outcome === "otm" || epoch.outcome === "OTM"
+                        ? "OTM (Out of the Money)"
+                        : "ITM (In the Money)"}
                     </span>
                   </div>
                   {Number(epoch.payout) > 0 && (
@@ -249,7 +294,7 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
                 >
                   {pendingId === opt.id ? (
                     <>
-                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                      <svg className="w-4 h-4 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                       </svg>
@@ -261,14 +306,23 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
                 </button>
               )}
 
-              {/* Progress bar for active options */}
+              {/* Progress bar and expiry countdown for active options */}
               {!epoch?.settled && !opt.claimed && (
                 <div className="mt-2">
                   <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>
-                      {isItm ? "In the Money" : "Out of the Money"}
+                    <span className="flex items-center gap-1">
+                      <span className={`w-1.5 h-1.5 rounded-full ${isItm ? "bg-green-400" : "bg-orange-400"}`} />
+                      {isItm ? "In the Money (ITM)" : "Out of the Money (OTM)"}
                     </span>
-                    <span>Expiry: Block #{opt.expiryBlock.toString()}</span>
+                    <span>
+                      {timeRemaining ? (
+                        <span className={isExpired ? "text-red-400" : ""}>
+                          {timeRemaining}
+                        </span>
+                      ) : (
+                        `Block #${expiryBlock.toLocaleString()}`
+                      )}
+                    </span>
                   </div>
                   <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
                     <div

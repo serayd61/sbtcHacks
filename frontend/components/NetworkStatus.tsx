@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getChainInfo } from "@/lib/hiro-api";
 import type { ChainInfo } from "@/lib/hiro-api";
+import { IS_MAINNET } from "@/lib/stacks-config";
 
 export default function NetworkStatus() {
   const [chainInfo, setChainInfo] = useState<ChainInfo | null>(null);
@@ -72,7 +73,7 @@ export default function NetworkStatus() {
 
             {chainInfo ? (
               <div className="space-y-2 text-sm">
-                <InfoRow label="Tenure (Contract)" value={`#${chainInfo.tenureHeight.toLocaleString()}`} />
+                <InfoRow label="Tenure Height" value={`#${chainInfo.tenureHeight.toLocaleString()}`} hint="Used by smart contracts" />
                 <InfoRow label="Bitcoin Block" value={`#${chainInfo.burnBlockHeight.toLocaleString()}`} />
                 <InfoRow label="Stacks Block" value={`#${chainInfo.stacksTipHeight.toLocaleString()}`} />
                 {chainInfo.peerCount > 0 && (
@@ -80,7 +81,7 @@ export default function NetworkStatus() {
                 )}
                 <div className="pt-2 mt-2 border-t border-gray-800">
                   <p className="text-xs text-gray-600">
-                    Network: Stacks Mainnet
+                    Network: Stacks {IS_MAINNET ? "Mainnet" : "Testnet"}
                   </p>
                 </div>
               </div>
@@ -94,10 +95,13 @@ export default function NetworkStatus() {
   );
 }
 
-function InfoRow({ label, value }: { label: string; value: string }) {
+function InfoRow({ label, value, hint }: { label: string; value: string; hint?: string }) {
   return (
     <div className="flex justify-between items-center">
-      <span className="text-gray-500">{label}</span>
+      <span className="text-gray-500">
+        {label}
+        {hint && <span className="text-gray-600 text-xs ml-1">({hint})</span>}
+      </span>
       <span className="text-white font-mono">{value}</span>
     </div>
   );

@@ -40,7 +40,7 @@ export default function DashboardPage() {
 
         {/* Right: Actions */}
         <div className="space-y-6">
-          <DepositWithdraw address={address} onTxComplete={refresh} />
+          <DepositWithdraw address={address} onTxComplete={refresh} refreshKey={refreshKey} />
 
           {/* How It Works */}
           <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">

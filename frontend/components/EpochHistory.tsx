@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getEpoch, getVaultInfo } from "@/lib/vault-calls";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
+import { InfoTip } from "@/components/ui/Tooltip";
 import type { Epoch, VaultInfo } from "@/lib/types";
 import { withRetry } from "@/lib/retry";
 
@@ -81,7 +82,7 @@ export default function EpochHistory({ refreshKey }: EpochHistoryProps) {
             </svg>
           </div>
           <p className="text-gray-500 text-sm">No epochs yet</p>
-          <p className="text-gray-600 text-xs mt-1">Epoch history will appear here</p>
+          <p className="text-gray-600 text-xs mt-1">Epoch history will appear after the first epoch is started by the admin</p>
         </div>
       </div>
     );
@@ -101,12 +102,20 @@ export default function EpochHistory({ refreshKey }: EpochHistoryProps) {
             <tr className="text-left text-gray-500 text-xs uppercase tracking-wide">
               <th className="pb-3 pr-4">#</th>
               <th className="pb-3 pr-4">Strike</th>
-              <th className="pb-3 pr-4">Premium</th>
+              <th className="pb-3 pr-4">
+                <span className="flex items-center">Premium<InfoTip text="sBTC charged to the option buyer, earned by vault depositors." /></span>
+              </th>
               <th className="pb-3 pr-4">Collateral</th>
               <th className="pb-3 pr-4">Settlement</th>
-              <th className="pb-3 pr-4">Earned</th>
-              <th className="pb-3 pr-4">Payout</th>
-              <th className="pb-3">Outcome</th>
+              <th className="pb-3 pr-4">
+                <span className="flex items-center">Earned<InfoTip text="Net premium earned by the vault after fees." /></span>
+              </th>
+              <th className="pb-3 pr-4">
+                <span className="flex items-center">Payout<InfoTip text="sBTC paid out from the vault to option buyers if ITM." /></span>
+              </th>
+              <th className="pb-3">
+                <span className="flex items-center">Outcome<InfoTip text="OTM = Out of the Money (vault keeps all collateral). ITM = In the Money (buyer gets payout)." /></span>
+              </th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-800">

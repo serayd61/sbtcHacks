@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { getVaultInfo, getUserInfo, getOracleInfo } from "@/lib/vault-calls";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
+import { InfoTip } from "@/components/ui/Tooltip";
 import type { VaultInfo, UserInfo, OracleInfo } from "@/lib/types";
 import { withRetry } from "@/lib/retry";
 
@@ -42,7 +43,7 @@ export default function VaultDashboard({
         }
       } catch (e) {
         console.error("Failed to load vault info:", e);
-        setError("Failed to connect to Stacks network. Retrying failed.");
+        setError("Unable to reach Stacks network. Check your connection and try again.");
       }
       setLoading(false);
     }
@@ -90,7 +91,12 @@ export default function VaultDashboard({
             <svg className="w-5 h-5 text-red-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4c-.77-.833-1.964-.833-2.732 0L4.082 16.5c-.77.833.192 2.5 1.732 2.5z" />
             </svg>
-            <p className="text-sm text-red-400">{error}</p>
+            <div>
+              <p className="text-sm text-red-400 font-medium">{error}</p>
+              <p className="text-xs text-red-400/60 mt-0.5">
+                The Stacks API may be temporarily unavailable
+              </p>
+            </div>
           </div>
           <button
             onClick={() => setRetryCount((c) => c + 1)}
@@ -105,7 +111,8 @@ export default function VaultDashboard({
 
   const sharePrice = vaultInfo ? Number(vaultInfo.sharePrice) / ONE_SBTC : 1;
   const tvlSbtc = vaultInfo ? Number(vaultInfo.totalSbtcDeposited) / ONE_SBTC : 0;
-  const apy = vaultInfo && vaultInfo.totalEpochsCompleted > 0n
+  const epochsCompleted = vaultInfo ? Number(vaultInfo.totalEpochsCompleted) : 0;
+  const apy = epochsCompleted > 0
     ? ((sharePrice - 1) * 52 * 100).toFixed(1)
     : "0.0";
 
@@ -124,17 +131,37 @@ export default function VaultDashboard({
           </span>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <StatCard label="Total Value Locked" value={tvlSbtc > 0 ? `${tvlSbtc.toFixed(4)} sBTC` : "0 sBTC"} />
-          <StatCard label="Share Price" value={sharePrice.toFixed(4) + " sBTC"} />
-          <StatCard label="Est. APY" value={`${apy}%`} highlight />
-          <StatCard label="Epochs" value={vaultInfo ? vaultInfo.totalEpochsCompleted.toString() : "0"} />
+          <StatCard
+            label="Total Value Locked"
+            value={tvlSbtc > 0 ? `${tvlSbtc.toFixed(4)} sBTC` : "0 sBTC"}
+            tooltip="Total sBTC deposited in the vault by all users, used as collateral for covered call options."
+          />
+          <StatCard
+            label="Share Price"
+            value={sharePrice.toFixed(4) + " sBTC"}
+            tooltip="Current value of 1 vault share in sBTC. Starts at 1.0000 and increases as the vault earns premiums."
+          />
+          <StatCard
+            label="Est. APY"
+            value={`${apy}%`}
+            highlight
+            tooltip="Estimated Annual Percentage Yield based on current share price growth, extrapolated to 52 weekly epochs per year."
+          />
+          <StatCard
+            label="Epochs"
+            value={epochsCompleted.toString()}
+            tooltip="Total number of completed option epochs. Each epoch is one cycle of selling covered call options."
+          />
         </div>
       </div>
 
       {/* Oracle + Epoch Row */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">BTC Price Oracle</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center">
+            BTC Price Oracle
+            <InfoTip text="The oracle provides BTC/USD price used for option settlement. Prices are aggregated from CoinGecko, Binance, and Kraken." />
+          </h2>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">BTC/USD</span>
@@ -146,7 +173,8 @@ export default function VaultDashboard({
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">Status</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${oracleInfo?.isStale ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1.5 ${oracleInfo?.isStale ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${oracleInfo?.isStale ? "bg-red-400" : "bg-green-400"}`} />
                 {oracleInfo ? (oracleInfo.isStale ? "Stale" : "Fresh") : "-"}
               </span>
             </div>
@@ -155,21 +183,30 @@ export default function VaultDashboard({
               <span className="text-sm text-white">{oracleInfo ? oracleInfo.submitterCount.toString() : "0"}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Tolerance</span>
+              <span className="text-sm text-gray-500 flex items-center">
+                Tolerance
+                <InfoTip text="Maximum allowed price deviation (%) between oracle updates. Prevents sudden large price jumps." />
+              </span>
               <span className="text-sm text-white">{oracleInfo ? `${Number(oracleInfo.toleranceBps) / 100}%` : "-"}</span>
             </div>
           </div>
         </div>
 
         <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4">Epoch Status</h2>
+          <h2 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-4 flex items-center">
+            Epoch Status
+            <InfoTip text="An epoch is one cycle of the covered call strategy: sell options, earn premiums, settle at expiry." />
+          </h2>
           <div className="space-y-3">
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">Current Epoch</span>
               <span className="text-sm text-white font-medium">#{vaultInfo ? vaultInfo.currentEpochId.toString() : "0"}</span>
             </div>
             <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Premiums Earned</span>
+              <span className="text-sm text-gray-500 flex items-center">
+                Premiums Earned
+                <InfoTip text="Total sBTC earned from selling option premiums across all epochs — the primary yield source." />
+              </span>
               <span className="text-sm text-green-400 font-medium">
                 {vaultInfo ? `${(Number(vaultInfo.totalPremiumsEarned) / ONE_SBTC).toFixed(4)} sBTC` : "0 sBTC"}
               </span>
@@ -182,7 +219,8 @@ export default function VaultDashboard({
             </div>
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500">Vault</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full ${vaultInfo?.vaultPaused ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>
+              <span className={`text-xs px-2 py-0.5 rounded-full flex items-center gap-1.5 ${vaultInfo?.vaultPaused ? "bg-red-900/50 text-red-400" : "bg-green-900/50 text-green-400"}`}>
+                <span className={`w-1.5 h-1.5 rounded-full ${vaultInfo?.vaultPaused ? "bg-red-400" : "bg-green-400"}`} />
                 {vaultInfo?.vaultPaused ? "Paused" : "Active"}
               </span>
             </div>
@@ -210,14 +248,36 @@ export default function VaultDashboard({
           </div>
         </div>
       )}
+
+      {/* Connect wallet prompt */}
+      {!address && (
+        <div className="bg-gray-800/30 rounded-xl p-4 border border-gray-800 text-center">
+          <p className="text-sm text-gray-500">
+            Connect your wallet to view your position and start earning yield
+          </p>
+        </div>
+      )}
     </div>
   );
 }
 
-function StatCard({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function StatCard({
+  label,
+  value,
+  highlight,
+  tooltip,
+}: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  tooltip?: string;
+}) {
   return (
     <div>
-      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">{label}</p>
+      <p className="text-xs text-gray-500 uppercase tracking-wide mb-1 flex items-center">
+        {label}
+        {tooltip && <InfoTip text={tooltip} />}
+      </p>
       <p className={`text-lg font-semibold ${highlight ? "text-green-400" : "text-white"}`}>{value}</p>
     </div>
   );
