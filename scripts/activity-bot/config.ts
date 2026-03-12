@@ -9,7 +9,7 @@ export const BOT_CONFIG = {
     optionsMarket: "options-market-v5",
     vaultLogic: "vault-logic-v2",
   },
-  walletCount: 1000,
+  walletCount: 500,
   stxPerWallet: 100_000n, // 0.1 STX in microSTX
   batchSize: 25, // TXs per batch
   batchDelayMs: 60_000, // 1 minute between batches

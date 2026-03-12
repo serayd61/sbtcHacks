@@ -22,3 +22,7 @@ node_modules
 
 # Claude
 .claude/
+
+# Activity bot generated files
+scripts/activity-bot/wallets.json
+scripts/activity-bot/progress.json
