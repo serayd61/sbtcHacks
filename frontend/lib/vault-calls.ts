@@ -12,39 +12,42 @@ import {
 } from "@stacks/transactions";
 import { CONTRACTS, DEPLOYER_ADDRESS, HIRO_API_URL, network } from "./stacks-config";
 import { cached } from "./cache";
+import { withRetry } from "./retry";
 import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing } from "./types";
 
-// Direct read-only call using native fetch (bypasses library encoding issues)
+// Direct read-only call using native fetch with retry (bypasses library encoding issues)
 async function readOnly(
   contract: { address: string; name: string },
   functionName: string,
   args: ClarityValue[] = [],
   sender?: string
 ) {
-  const senderAddress = sender || DEPLOYER_ADDRESS;
-  const serializedArgs = args.map((arg) => `0x${serializeCV(arg)}`);
-  const url = `${HIRO_API_URL}/v2/contracts/call-read/${contract.address}/${contract.name}/${encodeURIComponent(functionName)}`;
+  return withRetry(async () => {
+    const senderAddress = sender || DEPLOYER_ADDRESS;
+    const serializedArgs = args.map((arg) => `0x${serializeCV(arg)}`);
+    const url = `${HIRO_API_URL}/v2/contracts/call-read/${contract.address}/${contract.name}/${encodeURIComponent(functionName)}`;
 
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sender: senderAddress, arguments: serializedArgs }),
-  });
+    const response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sender: senderAddress, arguments: serializedArgs }),
+    });
 
-  if (!response.ok) {
-    const msg = await response.text().catch(() => "");
-    throw new Error(
-      `Read-only call failed (${response.status}): ${contract.name}.${functionName} — ${msg}`
-    );
-  }
+    if (!response.ok) {
+      const msg = await response.text().catch(() => "");
+      throw new Error(
+        `Read-only call failed (${response.status}): ${contract.name}.${functionName} — ${msg}`
+      );
+    }
 
-  const json = await response.json();
-  if (!json.okay) {
-    throw new Error(`Clarity error: ${json.cause || JSON.stringify(json)}`);
-  }
+    const json = await response.json();
+    if (!json.okay) {
+      throw new Error(`Clarity error: ${json.cause || JSON.stringify(json)}`);
+    }
 
-  const resultCV = deserializeCV(json.result);
-  return cvToJSON(resultCV);
+    const resultCV = deserializeCV(json.result);
+    return cvToJSON(resultCV);
+  }, 3, 1000);
 }
 
 // ── Vault read-only calls (cached + deduplicated) ───────────────────
