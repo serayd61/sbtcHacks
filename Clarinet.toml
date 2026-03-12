@@ -71,6 +71,13 @@ clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
 
+# V5: 100K listings per epoch (replaces options-market-v4)
+[contracts.options-market-v5]
+path = "contracts/options-market-v5.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
+
 [contracts.admin-multisig]
 path = "contracts/admin-multisig.clar"
 clarity_version = 2

@@ -71,6 +71,8 @@ const CONTRACTS = [
   "options-market-v3",
   // V4: 100 listings per epoch + batch creation (replaces options-market-v3)
   "options-market-v4",
+  // V5: 100K listings per epoch (replaces options-market-v4)
+  "options-market-v5",
   // Depends on governance-token
   "governance-voting",
 ];
