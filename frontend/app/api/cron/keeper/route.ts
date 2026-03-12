@@ -25,14 +25,15 @@ const DEPLOYER = (
 const CONTRACTS = {
   vault: "vault-logic-v2",
   oracle: "price-oracle-v2",
-  market: "options-market-v2",
+  market: "options-market-v4",
   mockSbtc: "mock-sbtc",
 };
 
 const EPOCH_CONFIG = {
   strikeOtmPercent: 5,
-  durationBlocks: 1008, // ~7 days
+  durationBlocks: 1008, // ~7 days (tenure_height based, ~10 min/block)
   premiumPct: 0.025, // 2.5% of TVL
+  listingsPerEpoch: 100, // 100 wallets can buy options per epoch
 };
 
 const PRICE_ENDPOINTS = {
@@ -224,22 +225,27 @@ async function startNewEpochAndListing(opts: {
   const strikeUsd = btcPrice * (1 + EPOCH_CONFIG.strikeOtmPercent / 100);
   const strike = BigInt(Math.round(strikeUsd * 1_000_000));
   const duration = EPOCH_CONFIG.durationBlocks;
-  const premiumSats = BigInt(
+  const totalPremiumSats = BigInt(
     Math.round(Number(totalDeposited) * EPOCH_CONFIG.premiumPct)
   );
 
+  // Split collateral and premium across 100 listings
+  const numListings = EPOCH_CONFIG.listingsPerEpoch;
+  const perListingCollateral = totalDeposited / BigInt(numListings);
+  const perListingPremium = totalPremiumSats / BigInt(numListings);
+
   log(
-    `Starting new epoch: strike=$${strikeUsd.toLocaleString()} | premium=${(Number(premiumSats) / 1e8).toFixed(4)} sBTC | duration=${duration} blocks`
+    `Starting new epoch: strike=$${strikeUsd.toLocaleString()} | total premium=${(Number(totalPremiumSats) / 1e8).toFixed(4)} sBTC | duration=${duration} blocks | ${numListings} listings`
   );
 
   try {
-    // Step 1: start-epoch
+    // Step 1: start-epoch (total premium for the epoch)
     const txId = await broadcast({
       contractName: CONTRACTS.vault,
       functionName: "start-epoch",
       functionArgs: [
         uintCV(strike),
-        uintCV(premiumSats),
+        uintCV(totalPremiumSats),
         uintCV(duration),
       ],
       senderKey: privateKey,
@@ -247,28 +253,30 @@ async function startNewEpochAndListing(opts: {
     log(`Start epoch TX: ${txId}`);
     txIds.push(txId);
 
-    // Step 2: create-listing on market
-    // Nonce ordering ensures start-epoch executes before create-listing
+    // Step 2: batch-create-listings on market (single TX for all 100 listings)
+    // Nonce ordering ensures start-epoch executes before batch-create-listings
     const newEpochId = currentEpochId + 1n;
     const expiryBlock = tenureHeight + BigInt(duration);
+
     try {
-      const listingTx = await broadcast({
+      const batchTx = await broadcast({
         contractName: CONTRACTS.market,
-        functionName: "create-listing",
+        functionName: "batch-create-listings",
         functionArgs: [
           uintCV(newEpochId),
           uintCV(strike),
-          uintCV(premiumSats),
-          uintCV(totalDeposited),
+          uintCV(perListingPremium),
+          uintCV(perListingCollateral),
           uintCV(expiryBlock),
+          uintCV(numListings),
         ],
         senderKey: privateKey,
       });
-      log(`Create listing TX: ${listingTx}`);
-      txIds.push(listingTx);
+      log(`Batch create ${numListings} listings TX: ${batchTx}`);
+      txIds.push(batchTx);
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : String(e);
-      log(`Create listing failed: ${msg}`);
+      log(`Batch create listings failed: ${msg}`);
     }
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : String(e);
@@ -282,7 +290,21 @@ async function startNewEpochAndListing(opts: {
 
 export const maxDuration = 60; // 60s for Pro plan
 
-export async function GET(request: Request) {
+export async function GET(_request: Request) {
+  // KILL SWITCH: Keeper is completely disabled.
+  // All cron/keeper logic is commented out to prevent any TX broadcasting.
+  // To re-enable: restore the original GET handler from git history.
+  return NextResponse.json(
+    { ok: false, error: "Keeper disabled", timestamp: new Date().toISOString() },
+    { status: 503 }
+  );
+}
+
+// ============================================
+// DISABLED: Original keeper logic below
+// ============================================
+/* eslint-disable */
+async function _DISABLED_GET_ORIGINAL(request: Request) {
   // C-4 FIX: CRON_SECRET is now MANDATORY — no unauthenticated access
   const authHeader = request.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
@@ -330,8 +352,8 @@ export async function GET(request: Request) {
       log("Failed to get reliable BTC price (need 2+ sources)");
       return NextResponse.json({ ok: false, logs, error: "No price data" });
     }
-    const onChainPrice = BigInt(Math.round(btcPrice * 1_000_000));
-    log(`BTC/USD: $${btcPrice.toLocaleString()} → on-chain: ${onChainPrice}`);
+    const onChainPrice = BigInt(Math.round(btcPrice! * 1_000_000));
+    log(`BTC/USD: $${btcPrice!.toLocaleString()} → on-chain: ${onChainPrice}`);
 
     // 2. Tolerance check: skip oracle TX if price hasn't moved significantly
     const currentOraclePrice = await getCurrentOraclePrice();
@@ -401,50 +423,83 @@ export async function GET(request: Request) {
     log(`Tenure height: #${tenureHeight} | Stacks height: #${stacksHeight}`);
 
     // 6. Handle active epoch — check if expired
+    // CRITICAL: Never send settle TX unless tenure_height >= expiry_block
+    // Previous bug: cvToJSON parsing inconsistency caused settle spam (800+ failed TXs)
     let justSettled = false;
 
     if (activeEpoch && currentEpochId > 0n) {
-      const epochResult = await readOnly(CONTRACTS.vault, "get-epoch", [
-        uintCV(currentEpochId),
-      ]);
-      if (epochResult) {
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const ep = (epochResult as any).value?.value || (epochResult as any).value;
-        const expiryBlock = BigInt(ep["expiry-block"].value);
-        const settled: boolean = ep.settled.value;
+      let epochParsed = false;
+      try {
+        const epochResult = await readOnly(CONTRACTS.vault, "get-epoch", [
+          uintCV(currentEpochId),
+        ]);
+        if (epochResult) {
+          // Defensive parsing: handle both cvToJSON tuple formats
+          // Format A: { value: { value: { fields... } } } (ok/some wrapped)
+          // Format B: { value: { fields... } } (directly unwrapped)
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          const raw = epochResult as any;
+          const ep = raw?.value?.value?.["expiry-block"]
+            ? raw.value.value
+            : raw?.value?.["expiry-block"]
+              ? raw.value
+              : null;
 
-        if (!settled && tenureHeight >= expiryBlock) {
-          log(`Epoch #${currentEpochId} EXPIRED (expiry=${expiryBlock}, now=${tenureHeight}) — settling...`);
-          if (!dryRun) {
-            try {
-              const txId = await broadcast({
-                contractName: CONTRACTS.vault,
-                functionName: "settle-epoch-with-oracle",
-                functionArgs: [
-                  contractPrincipalCV(DEPLOYER, CONTRACTS.mockSbtc),
-                  uintCV(currentEpochId),
-                ],
-                senderKey: privateKey,
-              });
-              log(`Settled epoch #${currentEpochId}: ${txId}`);
-              txIds.push(txId);
-              justSettled = true;
-            } catch (e: unknown) {
-              const msg = e instanceof Error ? e.message : String(e);
-              log(`Settle failed: ${msg}`);
-            }
+          if (!ep || !ep["expiry-block"]) {
+            log(`Epoch #${currentEpochId}: could not parse epoch data — skipping`);
           } else {
-            log("[dry] Would settle expired epoch");
-            justSettled = true; // Simulate for dry run flow
+            // Extract values with explicit type coercion
+            const expiryRaw = ep["expiry-block"]?.value ?? ep["expiry-block"];
+            const settledRaw = ep["settled"]?.value ?? ep["settled"];
+            const expiryBlock = BigInt(String(expiryRaw));
+            const settled = settledRaw === true || settledRaw === "true";
+            epochParsed = true;
+
+            // Log actual values for debugging
+            log(`Epoch #${currentEpochId}: expiry=#${expiryBlock} | tenure=#${tenureHeight} | settled=${settled} | remaining=${Number(expiryBlock) - Number(tenureHeight)} blocks`);
+
+            // DOUBLE-CHECK: Only settle if tenure_height has ACTUALLY reached expiry_block
+            const isExpired = Number(tenureHeight) >= Number(expiryBlock) && expiryBlock > 0n;
+
+            if (!settled && isExpired) {
+              log(`Epoch #${currentEpochId} EXPIRED (expiry=${expiryBlock}, now=${tenureHeight}) — settling...`);
+              if (!dryRun) {
+                try {
+                  const txId = await broadcast({
+                    contractName: CONTRACTS.vault,
+                    functionName: "settle-epoch-with-oracle",
+                    functionArgs: [
+                      contractPrincipalCV(DEPLOYER, CONTRACTS.mockSbtc),
+                      uintCV(currentEpochId),
+                    ],
+                    senderKey: privateKey,
+                  });
+                  log(`Settled epoch #${currentEpochId}: ${txId}`);
+                  txIds.push(txId);
+                  justSettled = true;
+                } catch (e: unknown) {
+                  const msg = e instanceof Error ? e.message : String(e);
+                  log(`Settle failed: ${msg}`);
+                }
+              } else {
+                log("[dry] Would settle expired epoch");
+                justSettled = true;
+              }
+            } else if (!settled) {
+              const remaining = Number(expiryBlock) - Number(tenureHeight);
+              const hours = (remaining * 10) / 60;
+              log(`Epoch active — ${remaining} blocks remaining (~${hours.toFixed(1)}h)`);
+            } else {
+              log("Epoch already settled — will start new one");
+              justSettled = true;
+            }
           }
-        } else if (!settled) {
-          const remaining = expiryBlock - tenureHeight;
-          const hours = (Number(remaining) * 10) / 60;
-          log(`Epoch active — ${remaining} blocks remaining (~${hours.toFixed(1)}h)`);
         } else {
-          log("Epoch already settled — will start new one");
-          justSettled = true; // Settled in a previous cycle, start new one now
+          log(`Epoch #${currentEpochId}: readOnly returned null — skipping`);
         }
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : String(e);
+        log(`Epoch parse error: ${msg} — skipping epoch management (NO TX sent)`);
       }
     }
 
@@ -471,7 +526,7 @@ export async function GET(request: Request) {
       } else {
         const strikeUsd = btcPrice * (1 + EPOCH_CONFIG.strikeOtmPercent / 100);
         const premiumSats = BigInt(Math.round(Number(totalDeposited) * EPOCH_CONFIG.premiumPct));
-        log(`[dry] Would start epoch: strike=$${strikeUsd.toLocaleString()} | premium=${(Number(premiumSats) / 1e8).toFixed(4)} sBTC + create listing`);
+        log(`[dry] Would start epoch: strike=$${strikeUsd.toLocaleString()} | premium=${(Number(premiumSats) / 1e8).toFixed(4)} sBTC + batch-create ${EPOCH_CONFIG.listingsPerEpoch} listings`);
       }
     } else if (!activeEpoch && totalDeposited === 0n) {
       log("No deposits in vault — waiting");
@@ -501,4 +556,6 @@ export async function GET(request: Request) {
     // H-6 FIX: Always release the lock
     isExecuting = false;
   }
+  return NextResponse.json({ ok: false });
 }
+/* eslint-enable */

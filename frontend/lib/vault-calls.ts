@@ -161,9 +161,9 @@ export function getListing(id: number): Promise<(Listing & { id: number }) | nul
 
 /**
  * Fetch all listings in parallel chunks (fixes N+1 sequential fetch).
- * Chunks of 5 to avoid rate-limiting on Hiro API.
+ * Chunks of 20 to handle 100 listings efficiently while avoiding rate-limiting.
  */
-const PARALLEL_CHUNK_SIZE = 5;
+const PARALLEL_CHUNK_SIZE = 20;
 
 export async function getListingsBatch(): Promise<(Listing & { id: number })[]> {
   const count = await getListingCount();

@@ -123,6 +123,16 @@ plan:
       path: contracts/options-market-v2.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
+      contract-name: options-market-v3
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/options-market-v3.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: options-market-v4
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/options-market-v4.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
       contract-name: price-oracle
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/price-oracle.clar

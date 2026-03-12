@@ -186,7 +186,7 @@ npm run dev    # http://localhost:3000
 
 ## Demo
 
-[Watch the Pitch Video](./sbtc-pitch-video.mp4)
+[Watch the Pitch Video on YouTube](https://youtu.be/eRGDQ_OLHlU?is=3DN8JtAByVoe9fOc) | [Download](./sbtc-pitch-video.mp4)
 
 ### Demo Flow
 1. Connect Leather/Xverse wallet

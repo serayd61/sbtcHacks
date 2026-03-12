@@ -25,6 +25,8 @@
 (define-constant ERR-NOT-SETTLED (err u4008))
 (define-constant ERR-ALREADY-CLAIMED (err u4009))
 (define-constant ERR-DUPLICATE-LISTING (err u4010))
+(define-constant ERR-MAX-LISTINGS-REACHED (err u4011))
+(define-constant MAX-LISTINGS-PER-EPOCH u10)
 
 ;; ============================================
 ;; Data vars
@@ -48,8 +50,8 @@
   claimed: bool
 })
 
-;; BUG FIX: Track which epochs already have a listing
-(define-map epoch-listing-exists uint bool)
+;; Track listing count per epoch (max 10)
+(define-map epoch-listing-count uint uint)
 
 ;; ============================================
 ;; Admin Functions
@@ -67,37 +69,42 @@
     (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
     (asserts! (> premium u0) ERR-ZERO-AMOUNT)
     (asserts! (> collateral u0) ERR-ZERO-AMOUNT)
-    ;; BUG FIX: Prevent duplicate listings for same epoch
-    (asserts! (not (default-to false (map-get? epoch-listing-exists epoch-id))) ERR-DUPLICATE-LISTING)
+    ;; Allow up to MAX-LISTINGS-PER-EPOCH (10) listings per epoch
+    (let (
+      (current-count (default-to u0 (map-get? epoch-listing-count epoch-id)))
+    )
+      (asserts! (< current-count MAX-LISTINGS-PER-EPOCH) ERR-MAX-LISTINGS-REACHED)
 
-    (let ((new-id (+ (var-get listing-count) u1)))
-      (map-set listings new-id {
-        epoch-id: epoch-id,
-        strike-price: strike-price,
-        premium: premium,
-        collateral: collateral,
-        expiry-block: expiry-block,
-        sold: false,
-        buyer: none,
-        created-block: block-height,
-        claimed: false
-      })
+      (let ((new-id (+ (var-get listing-count) u1)))
+        (map-set listings new-id {
+          epoch-id: epoch-id,
+          strike-price: strike-price,
+          premium: premium,
+          collateral: collateral,
+          expiry-block: expiry-block,
+          sold: false,
+          buyer: none,
+          created-block: block-height,
+          claimed: false
+        })
 
-      ;; Mark epoch as having a listing
-      (map-set epoch-listing-exists epoch-id true)
-      (var-set listing-count new-id)
+        ;; Increment epoch listing count
+        (map-set epoch-listing-count epoch-id (+ current-count u1))
+        (var-set listing-count new-id)
 
-      (print {
-        event: "listing-created",
-        listing-id: new-id,
-        epoch-id: epoch-id,
-        strike-price: strike-price,
-        premium: premium,
-        collateral: collateral,
-        expiry-block: expiry-block
-      })
+        (print {
+          event: "listing-created",
+          listing-id: new-id,
+          epoch-id: epoch-id,
+          strike-price: strike-price,
+          premium: premium,
+          collateral: collateral,
+          expiry-block: expiry-block,
+          listing-number: (+ current-count u1)
+        })
 
-      (ok new-id)
+        (ok new-id)
+      )
     )
   )
 )
@@ -244,5 +251,13 @@
 )
 
 (define-read-only (has-epoch-listing (epoch-id uint))
-  (default-to false (map-get? epoch-listing-exists epoch-id))
+  (> (default-to u0 (map-get? epoch-listing-count epoch-id)) u0)
+)
+
+(define-read-only (get-epoch-listing-count (epoch-id uint))
+  (default-to u0 (map-get? epoch-listing-count epoch-id))
+)
+
+(define-read-only (get-max-listings-per-epoch)
+  MAX-LISTINGS-PER-EPOCH
 )

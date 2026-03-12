@@ -9,7 +9,9 @@
     "price": "npx tsx keeper/price-submitter.ts",
     "epoch": "npx tsx keeper/epoch-manager.ts",
     "monitor": "npx tsx keeper/monitor.ts",
-    "dry-run": "npx tsx keeper/index.ts"
+    "dry-run": "npx tsx keeper/index.ts",
+    "emergency-restart": "npx tsx keeper/emergency-restart.ts",
+    "emergency-restart:execute": "npx tsx keeper/emergency-restart.ts --execute"
   },
   "dependencies": {
     "@stacks/network": "^7.0.0",

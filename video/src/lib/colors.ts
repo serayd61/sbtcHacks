@@ -1,0 +1,14 @@
+export const BTC_ORANGE = "#F7931A";
+export const ACCENT_ORANGE = "#f97316";
+export const ACCENT_ORANGE_DARK = "#ea580c";
+export const GOLD = "#fbbf24";
+export const BG_BLACK = "#0a0a0a";
+export const BG_CARD = "#111827";
+export const BORDER_CARD = "#1f2937";
+export const TEXT_PRIMARY = "#ffffff";
+export const TEXT_SECONDARY = "#9ca3af";
+export const TEXT_MUTED = "#6b7280";
+export const GREEN_ITM = "#22c55e";
+export const RED_LOSS = "#ef4444";
+export const ORANGE_OTM = "#f97316";
+export const BLUE_ACTIVE = "#60a5fa";

@@ -177,44 +177,46 @@ async function startNewEpoch(
   console.log(`  Start epoch TX: ${txId}`);
 }
 
-async function createListingOnMarket(
+async function createBatchListings(
   epochId: bigint,
   strikePrice: bigint,
   premium: bigint,
   collateral: bigint,
-  expiryBlock: bigint
+  expiryBlock: bigint,
+  numListings: bigint
 ): Promise<void> {
-  console.log(`\n  Creating market listing for epoch #${epochId}...`);
+  console.log(`\n  Creating ${numListings} listings via batch for epoch #${epochId}...`);
   console.log(`    Strike: $${(Number(strikePrice) / 1_000_000).toLocaleString()}`);
-  console.log(`    Premium: ${Number(premium) / 100_000_000} sBTC`);
-  console.log(`    Collateral: ${Number(collateral) / 100_000_000} sBTC`);
+  console.log(`    Premium per listing: ${Number(premium) / 100_000_000} sBTC`);
+  console.log(`    Collateral per listing: ${Number(collateral) / 100_000_000} sBTC`);
   console.log(`    Expiry block: #${expiryBlock}`);
 
   const { uintCV, AnchorMode } = await import("@stacks/transactions");
 
   const privateKey = await requirePrivateKey().catch(() => null);
   if (!privateKey) {
-    console.log("  [DRY RUN] Would create listing on options-market-v2");
+    console.log("  [DRY RUN] Would batch-create listings on options-market-v4");
     return;
   }
 
   const txId = await broadcastTx({
     contractAddress: DEPLOYER,
-    contractName: KEEPER_CONFIG.contracts.optionsMarketV2,
-    functionName: "create-listing",
+    contractName: KEEPER_CONFIG.contracts.optionsMarketV4,
+    functionName: "batch-create-listings",
     functionArgs: [
       uintCV(epochId),
       uintCV(strikePrice),
       uintCV(premium),
       uintCV(collateral),
       uintCV(expiryBlock),
+      uintCV(numListings),
     ],
     senderKey: privateKey,
     anchorMode: AnchorMode.Any,
-    fee: 10000n,
+    fee: 50000n,
   });
 
-  console.log(`  Create listing TX: ${txId}`);
+  console.log(`  Batch create listings TX: ${txId}`);
 }
 
 // ============================================
@@ -287,7 +289,7 @@ async function checkAndManageEpoch(): Promise<void> {
 
           // Use Black-Scholes for fair premium calculation
           const strikePriceUsd = Number(strike) / 1_000_000;
-          const premium = calculateCallPremium(
+          const totalPremium = calculateCallPremium(
             medianPrice,
             strikePriceUsd,
             duration,
@@ -299,24 +301,28 @@ async function checkAndManageEpoch(): Promise<void> {
             strikePriceUsd,
             duration,
             state.totalSbtcDeposited,
-            premium
+            totalPremium
           ));
 
-          // Step 1: Start new epoch
-          await startNewEpoch(strike, premium, duration);
+          // Step 1: Start new epoch (with total premium)
+          await startNewEpoch(strike, totalPremium, duration);
 
-          // Step 2: Create listing on the market
-          // New epoch ID = current + 1 (start-epoch increments it)
+          // Step 2: Create 100 listings via batch-create-listings (single TX)
+          const numListings = 100;
           const newEpochId = state.currentEpochId + 1n;
-          // Expiry block = current block + duration
           const expiryBlock = state.currentBlock + BigInt(duration);
+          const perListingCollateral = state.totalSbtcDeposited / BigInt(numListings);
+          const perListingPremium = totalPremium / BigInt(numListings);
 
-          await createListingOnMarket(
+          console.log(`  Creating ${numListings} listings via batch (each: ${Number(perListingCollateral) / 1e8} sBTC collateral, ${Number(perListingPremium) / 1e8} sBTC premium)`);
+
+          await createBatchListings(
             newEpochId,
             strike,
-            premium,
-            state.totalSbtcDeposited,
-            expiryBlock
+            perListingPremium,
+            perListingCollateral,
+            expiryBlock,
+            BigInt(numListings)
           );
         } else {
           console.log("  Could not get reliable price — skipping epoch start");

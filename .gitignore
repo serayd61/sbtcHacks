@@ -13,3 +13,12 @@ node_modules
 .env*
 .env.local
 .env*.local
+
+# OS
+.DS_Store
+
+# Vercel
+.vercel/
+
+# Claude
+.claude/

@@ -18,5 +18,10 @@
     "chokidar-cli": "^3.0.0",
     "vitest": "^3.2.4",
     "vitest-environment-clarinet": "^3.0.0"
+  },
+  "devDependencies": {
+    "@noble/hashes": "^2.0.1",
+    "@scure/bip32": "^2.0.1",
+    "@scure/bip39": "^2.0.1"
   }
 }

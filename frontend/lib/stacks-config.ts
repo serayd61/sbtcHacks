@@ -43,7 +43,7 @@ export const CONTRACTS = {
   },
   MARKET: {
     address: DEPLOYER_ADDRESS,
-    name: "options-market-v2",
+    name: "options-market-v4",
   },
   ORACLE: {
     address: DEPLOYER_ADDRESS,

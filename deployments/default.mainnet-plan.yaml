@@ -1,0 +1,108 @@
+id: 0
+name: Mainnet deployment
+network: mainnet
+stacks-node: https://api.hiro.so
+bitcoin-node: http://blockstack:blockstacksystem@bitcoin.blockstack.com:8332
+plan:
+  batches:
+  - id: 0
+    transactions:
+    - transaction-type: contract-publish
+      contract-name: admin-multisig
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10312250
+      path: contracts/admin-multisig.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: sip-010-trait
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10302980
+      path: contracts/sip-010-trait.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: vault-data-v1
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10313936
+      path: contracts/vault-data-v1.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: governance-token
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10313514
+      path: contracts/governance-token.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: governance-voting
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10320678
+      path: contracts/governance-voting.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: insurance-fund
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10318571
+      path: contracts/insurance-fund.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: mock-sbtc
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10305508
+      path: contracts/mock-sbtc.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: sbtc-options-vault
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10322785
+      path: contracts/sbtc-options-vault.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: options-market
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10313936
+      path: contracts/options-market.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: price-oracle-v2
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10317307
+      path: contracts/price-oracle-v2.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: vault-logic-v2
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10341746
+      path: contracts/vault-logic-v2.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: options-market-v2
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10316043
+      path: contracts/options-market-v2.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: price-oracle
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10305930
+      path: contracts/price-oracle.clar
+      anchor-block-only: true
+      clarity-version: 2
+    - transaction-type: contract-publish
+      contract-name: vault-strategy-v1
+      expected-sender: SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W
+      cost: 10317728
+      path: contracts/vault-strategy-v1.clar
+      anchor-block-only: true
+      clarity-version: 2
+    epoch: '2.5'

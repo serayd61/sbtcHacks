@@ -57,6 +57,20 @@ clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
 
+# V3: 10 listings per epoch (replaces options-market-v2)
+[contracts.options-market-v3]
+path = "contracts/options-market-v3.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
+
+# V4: 100 listings per epoch + batch creation (replaces options-market-v3)
+[contracts.options-market-v4]
+path = "contracts/options-market-v4.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
+
 [contracts.admin-multisig]
 path = "contracts/admin-multisig.clar"
 clarity_version = 2

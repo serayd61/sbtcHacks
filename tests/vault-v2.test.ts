@@ -158,27 +158,29 @@ describe("Bug Fix - Settlement Price Validation", () => {
 });
 
 // ============================================
-// BUG FIX: DUPLICATE LISTING PER EPOCH
+// MAX LISTINGS PER EPOCH (10 wallets)
 // ============================================
-describe("Bug Fix - Duplicate Listing Prevention", () => {
-  it("should reject second listing for same epoch", () => {
+describe("Max Listings Per Epoch", () => {
+  it("should allow up to 10 listings per epoch and reject 11th", () => {
     setupVault();
     simnet.callPublicFn("vault-logic-v2", "deposit",
       [Cl.principal(MOCK_SBTC), Cl.uint(5n * ONE_SBTC)], wallet1);
     simnet.callPublicFn("vault-logic-v2", "start-epoch",
       [Cl.uint(90000_000000n), Cl.uint(5_000000n), Cl.uint(10)], deployer);
 
-    // First listing succeeds
-    const first = simnet.callPublicFn("options-market-v2", "create-listing",
-      [Cl.uint(1), Cl.uint(90000_000000n), Cl.uint(5_000000n), Cl.uint(5n * ONE_SBTC), Cl.uint(simnet.blockHeight + 10)],
-      deployer);
-    expect(first.result).toBeOk(Cl.uint(1));
+    // Create 10 listings (all should succeed)
+    for (let i = 1; i <= 10; i++) {
+      const listing = simnet.callPublicFn("options-market-v2", "create-listing",
+        [Cl.uint(1), Cl.uint(90000_000000n), Cl.uint(500000n), Cl.uint(ONE_SBTC / 2n), Cl.uint(simnet.blockHeight + 10)],
+        deployer);
+      expect(listing.result).toBeOk(Cl.uint(i));
+    }
 
-    // Second listing for same epoch fails
-    const second = simnet.callPublicFn("options-market-v2", "create-listing",
-      [Cl.uint(1), Cl.uint(90000_000000n), Cl.uint(5_000000n), Cl.uint(5n * ONE_SBTC), Cl.uint(simnet.blockHeight + 10)],
+    // 11th listing should fail with ERR-MAX-LISTINGS-REACHED
+    const eleventh = simnet.callPublicFn("options-market-v2", "create-listing",
+      [Cl.uint(1), Cl.uint(90000_000000n), Cl.uint(500000n), Cl.uint(ONE_SBTC / 2n), Cl.uint(simnet.blockHeight + 10)],
       deployer);
-    expect(second.result).toBeErr(Cl.uint(4010)); // ERR-DUPLICATE-LISTING
+    expect(eleventh.result).toBeErr(Cl.uint(4011)); // ERR-MAX-LISTINGS-REACHED
   });
 });
 
