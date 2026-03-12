@@ -5,9 +5,18 @@ export const IS_MAINNET =
 
 export const network = IS_MAINNET ? STACKS_MAINNET : STACKS_TESTNET;
 
-export const HIRO_API_URL = IS_MAINNET
+// Direct Hiro API URL (used by server-side code and as fallback)
+export const HIRO_API_DIRECT = IS_MAINNET
   ? "https://api.mainnet.hiro.so"
   : "https://api.testnet.hiro.so";
+
+// Client-side API URL — uses our proxy to bypass browser extensions/blockers
+// In browser: /api/stacks/... (same-origin, no CORS/blocker issues)
+// On server (SSR/API routes): direct Hiro API
+export const HIRO_API_URL =
+  typeof window !== "undefined"
+    ? "/api/stacks"
+    : HIRO_API_DIRECT;
 
 export const DEPLOYER_ADDRESS = (
   process.env.NEXT_PUBLIC_DEPLOYER_ADDRESS ||

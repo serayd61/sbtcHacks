@@ -1,10 +1,9 @@
-import { IS_MAINNET, DEPLOYER_ADDRESS } from "./stacks-config";
+import { HIRO_API_URL, IS_MAINNET, DEPLOYER_ADDRESS } from "./stacks-config";
 import { withRetry } from "./retry";
 import { cached } from "./cache";
 
-const HIRO_API = IS_MAINNET
-  ? "https://api.mainnet.hiro.so"
-  : "https://api.testnet.hiro.so";
+// Uses proxy in browser (/api/stacks/...), direct Hiro API on server
+const HIRO_API = HIRO_API_URL;
 
 export interface ChainInfo {
   stacksTipHeight: number;
