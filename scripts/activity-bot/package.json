@@ -1,0 +1,22 @@
+{
+  "name": "sbtc-activity-bot",
+  "version": "1.0.0",
+  "description": "Activity bot for sBTC Options Vault - generates wallets, distributes STX, calls faucet, buys options",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "generate": "tsx index.ts --step generate",
+    "distribute": "tsx index.ts --step distribute",
+    "faucet": "tsx index.ts --step faucet",
+    "buy": "tsx index.ts --step buy",
+    "all": "tsx index.ts --step all"
+  },
+  "dependencies": {
+    "@scure/bip39": "^1.2.0",
+    "@stacks/network": "^7.0.0",
+    "@stacks/transactions": "^7.2.0",
+    "@stacks/wallet-sdk": "^7.2.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.0.0"
+  }
+}
