@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { buildBuyOptionTx, buildClaimPayoutTx, getListingsBatch, getVaultInfo } from "@/lib/vault-calls";
-import { formatSBTC, formatUSD } from "@/lib/stacks-config";
+import { formatSBTC, formatUSD, formatSats } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
 import { estimateBlocksRemaining } from "@/lib/block-time";
@@ -15,6 +15,8 @@ interface BuyOptionProps {
   refreshKey: number;
 }
 
+const PAGE_SIZE = 10;
+
 export default function BuyOption({
   address,
   onTxComplete,
@@ -24,9 +26,11 @@ export default function BuyOption({
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
+  const [epochId, setEpochId] = useState<bigint | null>(null);
+  const [showTable, setShowTable] = useState(false);
+  const [page, setPage] = useState(0);
   const { showToast } = useToast();
 
-  // Fetch chain info + listings, filter to active epoch only
   useEffect(() => {
     let cancelled = false;
 
@@ -43,9 +47,9 @@ export default function BuyOption({
 
         if (chainInfo) setCurrentBlock(chainInfo.tenureHeight);
 
-        // Filter: only show listings from the current active epoch
-        // Old epoch listings are expired and should not be purchasable
         const activeEpochId = vaultInfo?.currentEpochId;
+        if (activeEpochId) setEpochId(activeEpochId);
+
         const filtered = activeEpochId
           ? items.filter((l) => l.epochId === activeEpochId)
           : items;
@@ -103,39 +107,29 @@ export default function BuyOption({
     setPendingId(null);
   };
 
+  // Loading skeleton
   if (loading) {
     return (
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-        <div className="h-5 w-32 bg-gray-800 rounded animate-pulse mb-4" />
-        <div className="space-y-3">
-          {SKELETON_ITEMS.map(i => (
-            <div key={i} className="bg-gray-800 rounded-lg p-4 animate-pulse">
-              <div className="h-4 w-48 bg-gray-700 rounded mb-3" />
-              <div className="grid grid-cols-3 gap-2">
-                <div className="h-8 bg-gray-700 rounded" />
-                <div className="h-8 bg-gray-700 rounded" />
-                <div className="h-8 bg-gray-700 rounded" />
-              </div>
+        <div className="h-6 w-48 bg-gray-800 rounded animate-pulse mb-6" />
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 mb-6">
+          {[1, 2, 3, 4, 5].map(i => (
+            <div key={i} className="space-y-2">
+              <div className="h-3 w-16 bg-gray-800 rounded animate-pulse" />
+              <div className="h-6 w-24 bg-gray-700 rounded animate-pulse" />
             </div>
           ))}
         </div>
+        <div className="h-12 bg-gray-800 rounded-lg animate-pulse" />
       </div>
     );
   }
 
-  return (
-    <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-      <div className="flex items-center justify-between mb-4">
-        <div className="flex items-center">
-          <h2 className="text-lg font-semibold text-white">Options Market</h2>
-          <InfoTip text="Call options give the buyer the right to profit if BTC price rises above the strike price before expiry. The vault sells these options and earns the premium." />
-        </div>
-        {listings.length > 0 && (
-          <span className="text-xs text-gray-500">{listings.length} option{listings.length !== 1 ? "s" : ""}</span>
-        )}
-      </div>
-
-      {listings.length === 0 ? (
+  // Empty state
+  if (listings.length === 0) {
+    return (
+      <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
+        <h2 className="text-lg font-semibold text-white mb-4">Options Market</h2>
         <div className="text-center py-8">
           <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-800 flex items-center justify-center">
             <svg className="w-6 h-6 text-gray-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -143,146 +137,325 @@ export default function BuyOption({
             </svg>
           </div>
           <p className="text-gray-500 text-sm">No options available yet</p>
-          <p className="text-gray-600 text-xs mt-1">Options will appear when an epoch is started and a listing is created by the admin</p>
-          {/* How it works */}
+          <p className="text-gray-600 text-xs mt-1">Options will appear when an epoch is started</p>
           <div className="mt-6 text-left bg-gray-800/50 rounded-lg p-4 border border-gray-700/50">
             <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wide mb-3">How Options Work</h3>
             <div className="space-y-2">
-              <Step num={1} text="Admin starts an epoch with a strike price and creates an option listing" />
-              <Step num={2} text="You buy the call option by paying a premium (in sBTC)" />
+              <Step num={1} text="Admin starts an epoch with a strike price and creates option listings" />
+              <Step num={2} text="You buy a call option by paying a premium (in sBTC)" />
               <Step num={3} text="If BTC price rises above the strike at expiry, your option is In The Money (ITM)" />
               <Step num={4} text="Claim your payout after the epoch is settled by the keeper or admin" />
             </div>
           </div>
         </div>
-      ) : (
-        <div className="space-y-3">
-          {listings.map((listing) => {
-            const expiryBlock = Number(listing.expiryBlock);
-            const isExpired = currentBlock ? expiryBlock <= currentBlock : false;
-            const timeRemaining = currentBlock
-              ? estimateBlocksRemaining(currentBlock, expiryBlock)
-              : null;
+      </div>
+    );
+  }
 
-            return (
-              <div
-                key={listing.id}
-                className={`rounded-lg p-4 border transition-all ${
-                  listing.sold
-                    ? "bg-gray-800/50 border-gray-700/50"
-                    : "bg-gray-800 border-gray-700 hover:border-orange-500/30"
-                }`}
-              >
-                <div className="flex justify-between items-start mb-3">
-                  <div>
-                    <span className="text-xs text-gray-500">
-                      Option #{listing.id} | Epoch #{listing.epochId.toString()}
+  // Derive epoch-level summary from first listing (all are identical)
+  const sample = listings[0];
+  const available = listings.filter(l => !l.sold);
+  const sold = listings.filter(l => l.sold);
+  const userSold = sold.filter(l => l.buyer === address && !l.claimed);
+  const availableCount = available.length;
+  const totalCount = listings.length;
+  const expiryBlock = Number(sample.expiryBlock);
+  const isExpired = currentBlock ? expiryBlock <= currentBlock : false;
+  const timeRemaining = currentBlock ? estimateBlocksRemaining(currentBlock, expiryBlock) : null;
+  const breakEven = sample.strikePrice + (sample.premium * sample.strikePrice) / (sample.collateral || 1n);
+
+  // First available option for quick buy
+  const firstAvailable = available[0] ?? null;
+
+  // Pagination
+  const totalPages = Math.ceil(totalCount / PAGE_SIZE);
+  const pagedListings = listings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
+
+  return (
+    <div className="space-y-4">
+      {/* ── Epoch Summary Banner ─────────────────────────────── */}
+      <div className="bg-gray-900 rounded-xl border border-gray-800 overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center justify-between px-6 pt-5 pb-3">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-green-400 animate-pulse" />
+              <h2 className="text-lg font-semibold text-white">
+                Epoch #{epochId?.toString() ?? "—"}
+              </h2>
+            </div>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-green-900/30 text-green-400 border border-green-500/20 font-medium">
+              Active
+            </span>
+          </div>
+          <div className="text-right">
+            {timeRemaining && (
+              <span className={`text-sm font-medium ${isExpired ? "text-red-400" : "text-gray-300"}`}>
+                {isExpired ? "Expired" : timeRemaining}
+              </span>
+            )}
+            <p className="text-xs text-gray-500">
+              Block #{expiryBlock.toLocaleString()}
+            </p>
+          </div>
+        </div>
+
+        {/* Stats Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-px bg-gray-800/50 mx-4 rounded-lg overflow-hidden mb-4">
+          <StatCell
+            label="Strike Price"
+            value={formatUSD(sample.strikePrice)}
+            tooltip="BTC target price. If BTC exceeds this at expiry, options are In The Money (ITM)."
+          />
+          <StatCell
+            label="Premium"
+            value={formatSats(sample.premium)}
+            sub={formatSBTC(sample.premium) + " sBTC"}
+            tooltip="Cost to buy one option. Paid upfront, goes to vault depositors as yield."
+          />
+          <StatCell
+            label="Collateral"
+            value={formatSats(sample.collateral)}
+            sub={formatSBTC(sample.collateral) + " sBTC"}
+            tooltip="sBTC locked per option as backing. Determines max payout if ITM."
+          />
+          <StatCell
+            label="Break-even"
+            value={formatUSD(breakEven)}
+            valueClass="text-orange-400"
+            tooltip="BTC must exceed this price at expiry for the buyer to profit."
+          />
+          <StatCell
+            label="Available"
+            value={`${availableCount} / ${totalCount}`}
+            valueClass={availableCount > 0 ? "text-green-400" : "text-gray-500"}
+          />
+        </div>
+
+        {/* Availability bar */}
+        <div className="mx-6 mb-4">
+          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all"
+              style={{ width: `${(availableCount / totalCount) * 100}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1 text-xs text-gray-500">
+            <span>{sold.length} sold</span>
+            <span>{availableCount} available</span>
+          </div>
+        </div>
+
+        {/* Quick Buy Button */}
+        <div className="px-6 pb-5">
+          {firstAvailable && address ? (
+            <button
+              onClick={() => handleBuy(firstAvailable)}
+              disabled={pendingId !== null || isExpired}
+              className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white font-semibold py-3 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[48px] shadow-lg shadow-orange-500/10"
+            >
+              {pendingId !== null ? (
+                <><Spinner /> Confirming...</>
+              ) : isExpired ? (
+                "Epoch Expired"
+              ) : (
+                <>
+                  Buy Option
+                  <span className="opacity-70 font-normal">
+                    ({formatSats(sample.premium)})
+                  </span>
+                </>
+              )}
+            </button>
+          ) : !address ? (
+            <div className="text-center py-3 rounded-lg border border-gray-700 bg-gray-800/50">
+              <p className="text-sm text-gray-400">Connect wallet to purchase options</p>
+            </div>
+          ) : (
+            <div className="text-center py-3 rounded-lg border border-gray-700 bg-gray-800/50">
+              <p className="text-sm text-gray-500">All options sold out</p>
+            </div>
+          )}
+
+          {/* User's claimable options */}
+          {userSold.length > 0 && (
+            <div className="mt-3 space-y-2">
+              {userSold.map((opt) => (
+                <button
+                  key={opt.id}
+                  onClick={() => handleClaim(opt.id)}
+                  disabled={pendingId === opt.id}
+                  className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
+                >
+                  {pendingId === opt.id ? (
+                    <><Spinner /> Confirming...</>
+                  ) : (
+                    <>Claim Payout — Option #{opt.id}</>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Compact Listings Table ──────────────────────────── */}
+      <div className="bg-gray-900 rounded-xl border border-gray-800">
+        <button
+          onClick={() => setShowTable(!showTable)}
+          className="w-full flex items-center justify-between px-6 py-3 text-sm text-gray-400 hover:text-gray-300 transition-colors"
+        >
+          <span className="flex items-center gap-2">
+            <svg className={`w-4 h-4 transition-transform ${showTable ? "rotate-90" : ""}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+            </svg>
+            View All Listings
+          </span>
+          <span className="text-xs text-gray-600">
+            {availableCount} available / {sold.length} sold
+          </span>
+        </button>
+
+        {showTable && (
+          <div className="border-t border-gray-800">
+            {/* Table header */}
+            <div className="grid grid-cols-[60px_1fr_1fr_100px] sm:grid-cols-[70px_1fr_1fr_120px] gap-2 px-6 py-2 text-xs text-gray-500 uppercase tracking-wider border-b border-gray-800/50">
+              <span>ID</span>
+              <span>Status</span>
+              <span>Buyer</span>
+              <span className="text-right">Action</span>
+            </div>
+
+            {/* Table rows */}
+            <div className="divide-y divide-gray-800/30">
+              {pagedListings.map((listing) => (
+                <div
+                  key={listing.id}
+                  className={`grid grid-cols-[60px_1fr_1fr_100px] sm:grid-cols-[70px_1fr_1fr_120px] gap-2 px-6 py-2.5 text-sm items-center transition-colors hover:bg-gray-800/30 ${
+                    listing.buyer === address ? "bg-blue-900/5 border-l-2 border-l-blue-500/30" : ""
+                  }`}
+                >
+                  {/* ID */}
+                  <span className="text-gray-400 font-mono text-xs">#{listing.id}</span>
+
+                  {/* Status */}
+                  <span className="flex items-center gap-1.5">
+                    <span className={`w-1.5 h-1.5 rounded-full ${
+                      listing.claimed
+                        ? "bg-gray-500"
+                        : listing.sold
+                        ? "bg-blue-400"
+                        : "bg-green-400"
+                    }`} />
+                    <span className={`text-xs font-medium ${
+                      listing.claimed
+                        ? "text-gray-500"
+                        : listing.sold
+                        ? "text-blue-400"
+                        : "text-green-400"
+                    }`}>
+                      {listing.claimed ? "Claimed" : listing.sold ? "Sold" : "Available"}
                     </span>
-                    <p className="text-white font-semibold">
-                      CALL @ {formatUSD(listing.strikePrice)}
-                    </p>
-                  </div>
-                  <span
-                    className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-                      listing.sold
-                        ? listing.claimed
-                          ? "bg-gray-800 text-gray-500 border border-gray-700"
-                          : "bg-blue-900/30 text-blue-400 border border-blue-500/20"
-                        : "bg-green-900/30 text-green-400 border border-green-500/20"
-                    }`}
-                  >
-                    {listing.sold ? (listing.claimed ? "Settled" : "Sold") : "Available"}
+                  </span>
+
+                  {/* Buyer */}
+                  <span className="text-xs text-gray-500 font-mono truncate">
+                    {listing.buyer
+                      ? `${listing.buyer.slice(0, 6)}...${listing.buyer.slice(-4)}`
+                      : "—"
+                    }
+                  </span>
+
+                  {/* Action */}
+                  <span className="text-right">
+                    {!listing.sold && address && (
+                      <button
+                        onClick={() => handleBuy(listing)}
+                        disabled={pendingId === listing.id || isExpired}
+                        className="text-xs px-3 py-1 rounded-md bg-orange-500/10 text-orange-400 hover:bg-orange-500/20 disabled:opacity-30 disabled:hover:bg-orange-500/10 transition-colors font-medium"
+                      >
+                        {pendingId === listing.id ? "..." : "Buy"}
+                      </button>
+                    )}
+                    {listing.sold && listing.buyer === address && !listing.claimed && (
+                      <button
+                        onClick={() => handleClaim(listing.id)}
+                        disabled={pendingId === listing.id}
+                        className="text-xs px-3 py-1 rounded-md bg-green-500/10 text-green-400 hover:bg-green-500/20 disabled:opacity-30 transition-colors font-medium"
+                      >
+                        {pendingId === listing.id ? "..." : "Claim"}
+                      </button>
+                    )}
+                    {listing.sold && listing.buyer !== address && (
+                      <span className="text-xs text-gray-600">—</span>
+                    )}
+                    {!listing.sold && !address && (
+                      <span className="text-xs text-gray-600">—</span>
+                    )}
                   </span>
                 </div>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-sm mb-3">
-                  <div>
-                    <p className="text-gray-500 text-xs flex items-center">
-                      Premium
-                      <InfoTip text="The cost to buy this option. Paid upfront in sBTC, it goes to the vault as yield for depositors." />
-                    </p>
-                    <p className="text-white font-medium">{formatSBTC(listing.premium)} sBTC</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs flex items-center">
-                      Collateral
-                      <InfoTip text="sBTC locked in the vault as backing for this option. Determines the maximum potential payout." />
-                    </p>
-                    <p className="text-white font-medium">{formatSBTC(listing.collateral)} sBTC</p>
-                  </div>
-                  <div>
-                    <p className="text-gray-500 text-xs">Expiry</p>
-                    <p className="text-white font-medium">
-                      Block #{expiryBlock.toLocaleString()}
-                    </p>
-                    {timeRemaining && (
-                      <p className={`text-xs mt-0.5 ${isExpired ? "text-red-400" : "text-gray-500"}`}>
-                        {timeRemaining}
-                      </p>
-                    )}
-                  </div>
-                  {/* Break-even display for available options */}
-                  {!listing.sold && (
-                    <div>
-                      <p className="text-gray-500 text-xs flex items-center">
-                        Break-even
-                        <InfoTip text="BTC must exceed this price at expiry for profit. Strike + (Premium/Collateral) * Strike." />
-                      </p>
-                      <p className="text-orange-400 font-medium text-xs">
-                        {formatUSD(
-                          listing.strikePrice +
-                            (listing.premium * listing.strikePrice) / (listing.collateral || 1n)
-                        )}
-                      </p>
-                    </div>
-                  )}
-                </div>
-                {!listing.sold && address && (
-                  <button
-                    onClick={() => handleBuy(listing)}
-                    disabled={pendingId === listing.id || isExpired}
-                    className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
-                  >
-                    {pendingId === listing.id ? (
-                      <><Spinner /> Confirming...</>
-                    ) : isExpired ? (
-                      "Option Expired"
-                    ) : (
-                      <>Buy Option ({formatSBTC(listing.premium)} sBTC)</>
-                    )}
-                  </button>
-                )}
-                {!listing.sold && !address && (
-                  <p className="text-center text-xs text-gray-500 py-2">
-                    Connect wallet to purchase this option
-                  </p>
-                )}
-                {listing.sold && listing.buyer === address && !listing.claimed && (
-                  <button
-                    onClick={() => handleClaim(listing.id)}
-                    disabled={pendingId === listing.id}
-                    className="w-full bg-gradient-to-r from-green-600 to-green-700 hover:from-green-700 hover:to-green-800 disabled:from-gray-700 disabled:to-gray-700 text-white font-semibold py-2.5 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[44px]"
-                  >
-                    {pendingId === listing.id ? (
-                      <><Spinner /> Confirming...</>
-                    ) : (
-                      "Claim Payout"
-                    )}
-                  </button>
-                )}
+              ))}
+            </div>
+
+            {/* Pagination */}
+            {totalPages > 1 && (
+              <div className="flex items-center justify-between px-6 py-3 border-t border-gray-800">
+                <button
+                  onClick={() => setPage(p => Math.max(0, p - 1))}
+                  disabled={page === 0}
+                  className="text-xs px-3 py-1.5 rounded-md bg-gray-800 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400 transition-colors"
+                >
+                  Previous
+                </button>
+                <span className="text-xs text-gray-500">
+                  Page {page + 1} of {totalPages}
+                </span>
+                <button
+                  onClick={() => setPage(p => Math.min(totalPages - 1, p + 1))}
+                  disabled={page >= totalPages - 1}
+                  className="text-xs px-3 py-1.5 rounded-md bg-gray-800 text-gray-400 hover:text-white disabled:opacity-30 disabled:hover:text-gray-400 transition-colors"
+                >
+                  Next
+                </button>
               </div>
-            );
-          })}
-        </div>
-      )}
+            )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-// ── Constants outside component (avoids re-creation on render) ──────
-
-const SKELETON_ITEMS = [1, 2] as const;
-
 // ── Sub-components ──────────────────────────────────────────────────
+
+function StatCell({
+  label,
+  value,
+  sub,
+  valueClass,
+  tooltip,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  valueClass?: string;
+  tooltip?: string;
+}) {
+  return (
+    <div className="bg-gray-900 px-4 py-3">
+      <p className="text-gray-500 text-xs flex items-center gap-0.5 mb-1">
+        {label}
+        {tooltip && <InfoTip text={tooltip} />}
+      </p>
+      <p className={`font-semibold text-sm ${valueClass || "text-white"}`}>
+        {value}
+      </p>
+      {sub && (
+        <p className="text-[10px] text-gray-600 mt-0.5">{sub}</p>
+      )}
+    </div>
+  );
+}
 
 function Step({ num, text }: { num: number; text: string }) {
   return (

@@ -85,6 +85,18 @@ export function formatUSD(priceRaw: number | bigint): string {
   });
 }
 
+export function formatSats(sats: number | bigint): string {
+  const n = Number(sats);
+  if (n === 0) return "0 sats";
+  if (n >= ONE_SBTC) return `${(n / ONE_SBTC).toFixed(4)} sBTC`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M sats`;
+  if (n >= 1_000) {
+    const k = n / 1_000;
+    return k === Math.floor(k) ? `${k}K sats` : `${k.toFixed(1)}K sats`;
+  }
+  return `${n} sats`;
+}
+
 export function parseSBTC(amount: string): number {
   return Math.floor(parseFloat(amount) * ONE_SBTC);
 }

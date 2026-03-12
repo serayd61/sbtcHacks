@@ -9,7 +9,7 @@ export default function MarketPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
-      <div className="mb-8">
+      <div className="mb-6">
         <h2 className="text-2xl sm:text-3xl font-bold text-white tracking-tight">
           Options Market
         </h2>
@@ -19,7 +19,7 @@ export default function MarketPage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Main: Options listings */}
+        {/* Main: Epoch summary + listings */}
         <div className="lg:col-span-2">
           <BuyOption
             address={address}
@@ -28,39 +28,36 @@ export default function MarketPage() {
           />
         </div>
 
-        {/* Sidebar: Quick info */}
+        {/* Sidebar */}
         <div className="space-y-6">
-          {/* Your options */}
+          {/* User positions */}
           <UserOptions
             address={address}
             refreshKey={refreshKey}
             onTxComplete={refresh}
           />
 
-          {/* Info card */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
-            <h3 className="text-sm font-semibold text-gray-400 uppercase tracking-wide mb-3">Quick Guide</h3>
+          {/* Quick Guide */}
+          <div className="bg-gray-900 rounded-xl p-5 border border-gray-800">
+            <h3 className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-3">Quick Guide</h3>
             <div className="space-y-3 text-xs text-gray-500">
-              <div className="flex gap-2">
-                <span className="text-orange-400 font-bold shrink-0">OTM</span>
-                <span>Out of the Money — BTC price is below strike. Option expires worthless for buyer, vault keeps collateral.</span>
-              </div>
-              <div className="flex gap-2">
-                <span className="text-green-400 font-bold shrink-0">ITM</span>
-                <span>In the Money — BTC price is above strike. Buyer profits from the difference, claim payout after settlement.</span>
-              </div>
-              <div className="flex gap-2">
-                <span className="text-blue-400 font-bold shrink-0">Strike</span>
-                <span>The target price. If BTC exceeds this at expiry, the option is ITM.</span>
-              </div>
-              <div className="flex gap-2">
-                <span className="text-purple-400 font-bold shrink-0">Premium</span>
-                <span>The price you pay for the option. Goes to vault depositors as yield.</span>
-              </div>
+              <GuideItem color="text-orange-400" label="OTM" text="Out of the Money — BTC is below strike. Option expires worthless, vault keeps collateral." />
+              <GuideItem color="text-green-400" label="ITM" text="In the Money — BTC is above strike. Buyer profits from the difference after settlement." />
+              <GuideItem color="text-blue-400" label="Strike" text="Target price. If BTC exceeds this at expiry, the option is ITM." />
+              <GuideItem color="text-purple-400" label="Premium" text="Cost of the option. Paid upfront in sBTC, goes to vault depositors as yield." />
             </div>
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function GuideItem({ color, label, text }: { color: string; label: string; text: string }) {
+  return (
+    <div className="flex gap-2">
+      <span className={`${color} font-bold shrink-0 w-14`}>{label}</span>
+      <span>{text}</span>
     </div>
   );
 }
