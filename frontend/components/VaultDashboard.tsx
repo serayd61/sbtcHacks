@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getVaultInfo, getUserInfo, getOracleInfo } from "@/lib/vault-calls";
+import { getVaultInfo, getUserInfo, getOracleInfo, getEpoch } from "@/lib/vault-calls";
+import { getChainInfo } from "@/lib/hiro-api";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
+import { estimateBlocksRemaining } from "@/lib/block-time";
 import { InfoTip } from "@/components/ui/Tooltip";
-import type { VaultInfo, UserInfo, OracleInfo } from "@/lib/types";
+import type { VaultInfo, UserInfo, OracleInfo, Epoch } from "@/lib/types";
 
 interface VaultDashboardProps {
   address: string | null;
@@ -18,6 +20,8 @@ export default function VaultDashboard({
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
   const [userInfo, setUserInfo] = useState<UserInfo | null>(null);
   const [oracleInfo, setOracleInfo] = useState<OracleInfo | null>(null);
+  const [activeEpoch, setActiveEpoch] = useState<Epoch | null>(null);
+  const [currentBlock, setCurrentBlock] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
@@ -29,16 +33,25 @@ export default function VaultDashboard({
       setLoading(true);
       setError(null);
       try {
-        // getVaultInfo/getOracleInfo are now cached+deduplicated internally
-        const [vault, oracle] = await Promise.all([
+        const [vault, oracle, chainInfo] = await Promise.all([
           getVaultInfo(),
           getOracleInfo(),
+          getChainInfo().catch(() => null),
         ]);
 
         if (cancelled) return;
 
         setVaultInfo(vault);
         setOracleInfo(oracle);
+        if (chainInfo) setCurrentBlock(chainInfo.tenureHeight);
+
+        // Fetch active epoch details (strike, expiry, etc.)
+        if (vault.activeEpoch && vault.currentEpochId > 0n) {
+          const epoch = await getEpoch(Number(vault.currentEpochId)).catch(() => null);
+          if (!cancelled) setActiveEpoch(epoch);
+        } else {
+          setActiveEpoch(null);
+        }
 
         if (address) {
           const user = await getUserInfo(address);
@@ -211,6 +224,33 @@ export default function VaultDashboard({
               <span className="text-sm text-gray-500">Current Epoch</span>
               <span className="text-sm text-white font-medium">#{vaultInfo ? vaultInfo.currentEpochId.toString() : "0"}</span>
             </div>
+            {activeEpoch && (
+              <>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Strike Price</span>
+                  <span className="text-sm text-orange-400 font-medium">{formatUSD(activeEpoch.strikePrice)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500 flex items-center">
+                    Time Remaining
+                    <InfoTip text="Estimated time until this epoch expires. Based on ~10 min per tenure block (Bitcoin block time)." />
+                  </span>
+                  <span className={`text-sm font-medium ${
+                    currentBlock && Number(activeEpoch.expiryBlock) <= currentBlock
+                      ? "text-red-400"
+                      : "text-white"
+                  }`}>
+                    {currentBlock
+                      ? estimateBlocksRemaining(currentBlock, Number(activeEpoch.expiryBlock))
+                      : "-"}
+                  </span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-gray-500">Expiry Block</span>
+                  <span className="text-sm text-white font-mono">#{Number(activeEpoch.expiryBlock).toLocaleString()}</span>
+                </div>
+              </>
+            )}
             <div className="flex justify-between items-center">
               <span className="text-sm text-gray-500 flex items-center">
                 Premiums Earned
@@ -218,12 +258,6 @@ export default function VaultDashboard({
               </span>
               <span className="text-sm text-green-400 font-medium">
                 {vaultInfo ? `${(Number(vaultInfo.totalPremiumsEarned) / ONE_SBTC).toFixed(4)} sBTC` : "0 sBTC"}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <span className="text-sm text-gray-500">Fees Collected</span>
-              <span className="text-sm text-yellow-400 font-medium">
-                {vaultInfo ? `${(Number(vaultInfo.totalFeesCollected) / ONE_SBTC).toFixed(4)} sBTC` : "0 sBTC"}
               </span>
             </div>
             <div className="flex justify-between items-center">
