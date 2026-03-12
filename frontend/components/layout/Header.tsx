@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import { useWallet } from "./Providers";
 import NetworkStatus from "@/components/NetworkStatus";
 import { DEPLOYER_ADDRESS } from "@/lib/stacks-config";
+import { buildFaucetTx } from "@/lib/vault-calls";
+import { useToast } from "@/components/Toast";
 
 const NAV_ITEMS = [
   { href: "/", label: "Dashboard", icon: DashboardIcon, adminOnly: false },
@@ -18,6 +20,26 @@ export default function Header() {
   const { address, connectWallet, disconnectWallet, isConnecting } = useWallet();
   const pathname = usePathname();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [faucetPending, setFaucetPending] = useState(false);
+  const { showToast } = useToast();
+
+  const handleFaucet = async () => {
+    if (!address || faucetPending) return;
+    setFaucetPending(true);
+    try {
+      const txOptions = buildFaucetTx();
+      const { openContractCall } = await import("@stacks/connect");
+      await openContractCall({
+        ...txOptions,
+        onFinish: (data) => showToast("1 sBTC minted from faucet!", "success", data.txId),
+        onCancel: () => showToast("Faucet cancelled", "info"),
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      showToast(msg || "Faucet failed", "error");
+    }
+    setFaucetPending(false);
+  };
 
   // M-4 FIX: Only show admin nav to deployer address
   const visibleNavItems = useMemo(
@@ -69,6 +91,26 @@ export default function Header() {
 
             {address ? (
               <div className="flex items-center gap-2">
+                {/* Faucet button — mock-sbtc faucet for testing */}
+                <button
+                  onClick={handleFaucet}
+                  disabled={faucetPending}
+                  className="text-xs bg-orange-500/15 hover:bg-orange-500/25 border border-orange-500/20 disabled:opacity-50 text-orange-400 font-medium px-2.5 py-1.5 rounded-lg transition-colors flex items-center gap-1.5"
+                  title="Get 1 test sBTC from faucet"
+                  aria-label="Get 1 testnet sBTC from faucet"
+                >
+                  {faucetPending ? (
+                    <svg className="w-3 h-3 animate-spin" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                    </svg>
+                  ) : (
+                    <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 6v12m6-6H6" />
+                    </svg>
+                  )}
+                  <span className="hidden sm:inline">Faucet</span>
+                </button>
                 <span className="text-xs bg-gray-800 px-3 py-1.5 rounded-lg font-mono text-orange-400 hidden sm:block">
                   {address.slice(0, 6)}...{address.slice(-4)}
                 </span>
