@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { buildBuyOptionTx, buildClaimPayoutTx, getListingsBatch } from "@/lib/vault-calls";
+import { buildBuyOptionTx, buildClaimPayoutTx, getListingsBatch, getVaultInfo } from "@/lib/vault-calls";
 import { formatSBTC, formatUSD } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
@@ -26,22 +26,31 @@ export default function BuyOption({
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
   const { showToast } = useToast();
 
-  // Single useEffect: fetch chain info + listings in parallel
+  // Fetch chain info + listings, filter to active epoch only
   useEffect(() => {
     let cancelled = false;
 
     async function load() {
       setLoading(true);
       try {
-        const [chainInfo, items] = await Promise.all([
+        const [chainInfo, vaultInfo, items] = await Promise.all([
           getChainInfo().catch(() => null),
+          getVaultInfo().catch(() => null),
           getListingsBatch(),
         ]);
 
         if (cancelled) return;
 
         if (chainInfo) setCurrentBlock(chainInfo.tenureHeight);
-        setListings(items);
+
+        // Filter: only show listings from the current active epoch
+        // Old epoch listings are expired and should not be purchasable
+        const activeEpochId = vaultInfo?.currentEpochId;
+        const filtered = activeEpochId
+          ? items.filter((l) => l.epochId === activeEpochId)
+          : items;
+
+        setListings(filtered);
       } catch (e) {
         if (!cancelled) console.error("Failed to load listings:", e);
       }
