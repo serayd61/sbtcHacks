@@ -25,7 +25,7 @@ const DEPLOYER = (
 const CONTRACTS = {
   vault: "vault-logic-v2",
   oracle: "price-oracle-v2",
-  market: "options-market-v4",
+  market: "options-market-v5",
   mockSbtc: "mock-sbtc",
 };
 
@@ -33,7 +33,7 @@ const EPOCH_CONFIG = {
   strikeOtmPercent: 5,
   durationBlocks: 1008, // ~7 days (tenure_height based, ~10 min/block)
   premiumPct: 0.025, // 2.5% of TVL
-  listingsPerEpoch: 100, // 100 wallets can buy options per epoch
+  listingsPerEpoch: 1000, // 1000 wallets can buy options per epoch
 };
 
 const PRICE_ENDPOINTS = {

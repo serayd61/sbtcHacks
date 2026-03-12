@@ -195,13 +195,13 @@ async function createBatchListings(
 
   const privateKey = await requirePrivateKey().catch(() => null);
   if (!privateKey) {
-    console.log("  [DRY RUN] Would batch-create listings on options-market-v4");
+    console.log("  [DRY RUN] Would batch-create listings on options-market-v5");
     return;
   }
 
   const txId = await broadcastTx({
     contractAddress: DEPLOYER,
-    contractName: KEEPER_CONFIG.contracts.optionsMarketV4,
+    contractName: KEEPER_CONFIG.contracts.optionsMarketV5,
     functionName: "batch-create-listings",
     functionArgs: [
       uintCV(epochId),

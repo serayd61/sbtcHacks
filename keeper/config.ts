@@ -12,7 +12,7 @@ export const KEEPER_CONFIG = {
     priceOracleV2: "price-oracle-v2",
     vaultLogicV2: "vault-logic-v2",
     vaultDataV1: "vault-data-v1",
-    optionsMarketV4: "options-market-v4",
+    optionsMarketV5: "options-market-v5",
     mockSbtc: "mock-sbtc",
   },
 

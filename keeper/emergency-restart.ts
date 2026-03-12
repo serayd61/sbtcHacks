@@ -205,13 +205,13 @@ async function createBatchListings(
   console.log(`  Expiry block: ${expiryBlock}`);
 
   if (DRY_RUN) {
-    console.log(`  [DRY RUN] Would call: options-market-v4.batch-create-listings(u${epochId}, u${strikePrice}, u${perPremium}, u${perCollateral}, u${expiryBlock}, u${numListings})`);
+    console.log(`  [DRY RUN] Would call: options-market-v5.batch-create-listings(u${epochId}, u${strikePrice}, u${perPremium}, u${perCollateral}, u${expiryBlock}, u${numListings})`);
     return "dry-run-listing-tx";
   }
 
   const txId = await broadcastTx({
     contractAddress: DEPLOYER,
-    contractName: KEEPER_CONFIG.contracts.optionsMarketV4,
+    contractName: KEEPER_CONFIG.contracts.optionsMarketV5,
     functionName: "batch-create-listings",
     functionArgs: [
       uintCV(epochId),
