@@ -62,6 +62,15 @@ export const CONTRACTS = {
     address: DEPLOYER_ADDRESS,
     name: "admin-multisig",
   },
+  GOV_TOKEN: {
+    address: DEPLOYER_ADDRESS,
+    name: "governance-token",
+    assetName: "svgov",
+  },
+  GOV_VOTING: {
+    address: DEPLOYER_ADDRESS,
+    name: "governance-voting",
+  },
 } as const;
 
 export const SBTC_DECIMALS = 8;

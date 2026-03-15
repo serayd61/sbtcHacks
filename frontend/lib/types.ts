@@ -47,6 +47,41 @@ export interface MarketInfo {
   totalVolume: bigint;
 }
 
+export interface GovernanceTokenInfo {
+  name: string;
+  symbol: string;
+  decimals: bigint;
+  totalSupply: bigint;
+  maxSupply: bigint;
+  mintEnabled: boolean;
+}
+
+export interface GovEntitlement {
+  entitled: bigint;
+  claimed: bigint;
+  claimable: bigint;
+}
+
+export interface Proposal {
+  id: number;
+  proposer: string;
+  paramKey: string;
+  paramValue: bigint;
+  votesFor: bigint;
+  votesAgainst: bigint;
+  startBlock: bigint;
+  executed: boolean;
+}
+
+export interface ProtocolParams {
+  strikeOtmBps: bigint;
+  managementFeeBps: bigint;
+  performanceFeeBps: bigint;
+  epochDuration: bigint;
+  insuranceFeeBps: bigint;
+  withdrawalLimitBps: bigint;
+}
+
 export interface OracleInfo {
   price: bigint;
   lastUpdateBlock: bigint;

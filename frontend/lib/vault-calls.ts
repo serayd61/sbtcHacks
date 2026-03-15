@@ -3,6 +3,7 @@ import {
   principalCV,
   contractPrincipalCV,
   boolCV,
+  stringAsciiCV,
   cvToJSON,
   serializeCV,
   deserializeCV,
@@ -13,7 +14,7 @@ import {
 import { CONTRACTS, DEPLOYER_ADDRESS, HIRO_API_URL, network } from "./stacks-config";
 import { cached } from "./cache";
 import { withRetry } from "./retry";
-import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing } from "./types";
+import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing, GovernanceTokenInfo, GovEntitlement, Proposal, ProtocolParams } from "./types";
 
 // Direct read-only call using native fetch with retry (bypasses library encoding issues)
 async function readOnly(
@@ -505,6 +506,139 @@ export function buildSetVaultPausedTx(paused: boolean) {
     functionName: "set-vault-paused",
     // M-6 FIX: Clarity expects bool, not uint — was causing type mismatch on-chain
     functionArgs: [boolCV(paused)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+// ── Governance read-only calls ────────────────────────────────────────
+
+export function getGovernanceTokenInfo(): Promise<GovernanceTokenInfo> {
+  return cached("gov-token-info", async () => {
+    const result = await readOnly(CONTRACTS.GOV_TOKEN, "get-token-info");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value.value;
+    return {
+      name: v.name.value,
+      symbol: v.symbol.value,
+      decimals: BigInt(v.decimals.value),
+      totalSupply: BigInt(v["total-supply"].value),
+      maxSupply: BigInt(v["max-supply"].value),
+      mintEnabled: v["mint-enabled"].value,
+    };
+  });
+}
+
+export function getGovBalance(address: string): Promise<bigint> {
+  return cached(`gov-balance:${address}`, async () => {
+    const result = await readOnly(CONTRACTS.GOV_TOKEN, "get-balance", [principalCV(address)], address);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return BigInt((result as any).value.value);
+  }, 5_000);
+}
+
+export function getGovEntitlement(address: string): Promise<GovEntitlement> {
+  return cached(`gov-entitlement:${address}`, async () => {
+    const result = await readOnly(CONTRACTS.GOV_TOKEN, "get-entitled-gov", [principalCV(address)], address);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value;
+    return {
+      entitled: BigInt(v.entitled.value),
+      claimed: BigInt(v.claimed.value),
+      claimable: BigInt(v.claimable.value),
+    };
+  }, 5_000);
+}
+
+export function getProposalCount(): Promise<number> {
+  return cached("proposal-count", async () => {
+    const result = await readOnly(CONTRACTS.GOV_VOTING, "get-proposal-count");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return Number((result as any).value);
+  }, 10_000);
+}
+
+export function getProposal(id: number): Promise<Proposal | null> {
+  return cached(`proposal:${id}`, async () => {
+    const result = await readOnly(CONTRACTS.GOV_VOTING, "get-proposal", [uintCV(id)]);
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const r = result as any;
+    if (!r.value) return null;
+    const v = r.value.value || r.value;
+    return {
+      id,
+      proposer: v.proposer.value,
+      paramKey: v["param-key"].value,
+      paramValue: BigInt(v["param-value"].value),
+      votesFor: BigInt(v["votes-for"].value),
+      votesAgainst: BigInt(v["votes-against"].value),
+      startBlock: BigInt(v["start-block"].value),
+      executed: v.executed.value,
+    };
+  }, 10_000);
+}
+
+export function getProtocolParams(): Promise<ProtocolParams> {
+  return cached("protocol-params", async () => {
+    const result = await readOnly(CONTRACTS.GOV_VOTING, "get-all-params");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value;
+    return {
+      strikeOtmBps: BigInt(v["strike-otm-bps"].value),
+      managementFeeBps: BigInt(v["management-fee-bps"].value),
+      performanceFeeBps: BigInt(v["performance-fee-bps"].value),
+      epochDuration: BigInt(v["epoch-duration"].value),
+      insuranceFeeBps: BigInt(v["insurance-fee-bps"].value),
+      withdrawalLimitBps: BigInt(v["withdrawal-limit-bps"].value),
+    };
+  });
+}
+
+// ── Governance TX builders ────────────────────────────────────────────
+
+export function buildClaimGovTokensTx() {
+  return {
+    contractAddress: CONTRACTS.GOV_TOKEN.address,
+    contractName: CONTRACTS.GOV_TOKEN.name,
+    functionName: "claim-governance-tokens",
+    functionArgs: [],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+export function buildCreateProposalTx(paramKey: string, newValue: number) {
+  return {
+    contractAddress: CONTRACTS.GOV_VOTING.address,
+    contractName: CONTRACTS.GOV_VOTING.name,
+    functionName: "create-proposal",
+    functionArgs: [stringAsciiCV(paramKey), uintCV(newValue)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+export function buildVoteTx(proposalId: number, support: boolean) {
+  return {
+    contractAddress: CONTRACTS.GOV_VOTING.address,
+    contractName: CONTRACTS.GOV_VOTING.name,
+    functionName: "vote",
+    functionArgs: [uintCV(proposalId), boolCV(support)],
+    postConditionMode: PostConditionMode.Allow,
+    postConditions: [],
+    network,
+  };
+}
+
+export function buildExecuteProposalTx(proposalId: number) {
+  return {
+    contractAddress: CONTRACTS.GOV_VOTING.address,
+    contractName: CONTRACTS.GOV_VOTING.name,
+    functionName: "execute-proposal",
+    functionArgs: [uintCV(proposalId)],
     postConditionMode: PostConditionMode.Allow,
     postConditions: [],
     network,
