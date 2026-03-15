@@ -4,7 +4,7 @@
 
 Earn yield on your sBTC through automated covered call options — bringing Ribbon Finance-style structured products to the Bitcoin economy via Stacks.
 
-> **Live on Mainnet**: [sbtc-options-vault.vercel.app](https://sbtc-options-vault.vercel.app)
+> **Live on Mainnet**: [sbtcvault.live](https://sbtcvault.live)
 >
 > **Built for**: [BUIDL BATTLE #2](https://dorahacks.io/hackathon/buidlbattle2) — Most Innovative Use of sBTC
 >
