@@ -281,7 +281,7 @@ KEEPER_PRIVATE_KEY=... npx tsx index.ts
 [Watch the Pitch Video](https://youtu.be/eRGDQ_OLHlU?is=3DN8JtAByVoe9fOc) | [Download Video](./video/out/explainer.mp4)
 
 ### Live Demo Flow
-1. Visit [sbtc-options-vault.vercel.app](https://sbtc-options-vault.vercel.app)
+1. Visit [sbtcvault.live](https://sbtcvault.live)
 2. Connect Leather/Xverse wallet
 3. Get test sBTC from faucet (header button)
 4. Deposit sBTC into vault, receive shares
@@ -327,7 +327,7 @@ Comprehensive security analysis documented in `SECURITY-V3-REQUIRED.md`:
 
 ## Whitepaper
 
-Full protocol documentation available at [/whitepaper](https://sbtc-options-vault.vercel.app/whitepaper):
+Full protocol documentation available at [/whitepaper](https://sbtcvault.live/whitepaper):
 - Problem statement & market analysis
 - Covered call strategy explanation
 - Technical architecture deep-dive
