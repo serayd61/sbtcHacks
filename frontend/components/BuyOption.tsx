@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { buildBuyOptionTx, buildClaimPayoutTx, getListingsBatch, getVaultInfo } from "@/lib/vault-calls";
+import { buildBuyOptionTx, buildClaimPayoutTx, getListingsPage, findFirstAvailableListing, getVaultInfo } from "@/lib/vault-calls";
 import { formatSBTC, formatUSD, formatSats } from "@/lib/stacks-config";
 import { useToast } from "@/components/Toast";
 import { InfoTip } from "@/components/ui/Tooltip";
@@ -23,6 +23,9 @@ export default function BuyOption({
   refreshKey,
 }: BuyOptionProps) {
   const [listings, setListings] = useState<(Listing & { id: number })[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
+  const [sample, setSample] = useState<(Listing & { id: number }) | null>(null);
+  const [firstAvailable, setFirstAvailable] = useState<(Listing & { id: number }) | null>(null);
   const [loading, setLoading] = useState(true);
   const [pendingId, setPendingId] = useState<number | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
@@ -37,10 +40,12 @@ export default function BuyOption({
     async function load() {
       setLoading(true);
       try {
-        const [chainInfo, vaultInfo, items] = await Promise.all([
+        // Fetch chain info + vault info + first page of listings (newest first)
+        // This makes ~15 API calls instead of 3300+
+        const [chainInfo, vaultInfo, pageData] = await Promise.all([
           getChainInfo().catch(() => null),
           getVaultInfo().catch(() => null),
-          getListingsBatch(),
+          getListingsPage(0, PAGE_SIZE),
         ]);
 
         if (cancelled) return;
@@ -50,11 +55,14 @@ export default function BuyOption({
         const activeEpochId = vaultInfo?.currentEpochId;
         if (activeEpochId) setEpochId(activeEpochId);
 
-        const filtered = activeEpochId
-          ? items.filter((l) => l.epochId === activeEpochId)
-          : items;
+        setListings(pageData.items);
+        setTotalCount(pageData.totalCount);
+        setSample(pageData.sample);
 
-        setListings(filtered);
+        // Find first available listing in background (for quick buy button)
+        findFirstAvailableListing().then(avail => {
+          if (!cancelled) setFirstAvailable(avail);
+        }).catch(() => {});
       } catch (e) {
         if (!cancelled) console.error("Failed to load listings:", e);
       }
@@ -64,6 +72,24 @@ export default function BuyOption({
     load();
     return () => { cancelled = true; };
   }, [refreshKey]);
+
+  // Fetch new page when pagination changes
+  useEffect(() => {
+    if (page === 0) return; // page 0 already loaded above
+    let cancelled = false;
+
+    async function loadPage() {
+      try {
+        const pageData = await getListingsPage(page, PAGE_SIZE);
+        if (!cancelled) setListings(pageData.items);
+      } catch (e) {
+        console.error("Failed to load page:", e);
+      }
+    }
+
+    loadPage();
+    return () => { cancelled = true; };
+  }, [page]);
 
   const handleBuy = async (listing: Listing & { id: number }) => {
     if (!address) return;
@@ -126,7 +152,7 @@ export default function BuyOption({
   }
 
   // Empty state
-  if (listings.length === 0) {
+  if (totalCount === 0 && !sample) {
     return (
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <h2 className="text-lg font-semibold text-white mb-4">Options Market</h2>
@@ -152,24 +178,18 @@ export default function BuyOption({
     );
   }
 
-  // Derive epoch-level summary from first listing (all are identical)
-  const sample = listings[0];
-  const available = listings.filter(l => !l.sold);
-  const sold = listings.filter(l => l.sold);
-  const userSold = sold.filter(l => l.buyer === address && !l.claimed);
-  const availableCount = available.length;
-  const totalCount = listings.length;
+  // Derive epoch-level summary from sample listing (all listings share same params)
+  if (!sample) return null;
+  const userSold = listings.filter(l => l.sold && l.buyer === address && !l.claimed);
+  const pageSold = listings.filter(l => l.sold).length;
+  const pageAvailable = listings.filter(l => !l.sold).length;
   const expiryBlock = Number(sample.expiryBlock);
   const isExpired = currentBlock ? expiryBlock <= currentBlock : false;
   const timeRemaining = currentBlock ? estimateBlocksRemaining(currentBlock, expiryBlock) : null;
   const breakEven = sample.strikePrice + (sample.premium * sample.strikePrice) / (sample.collateral || 1n);
 
-  // First available option for quick buy
-  const firstAvailable = available[0] ?? null;
-
   // Pagination
   const totalPages = Math.ceil(totalCount / PAGE_SIZE);
-  const pagedListings = listings.slice(page * PAGE_SIZE, (page + 1) * PAGE_SIZE);
 
   return (
     <div className="space-y-4">
@@ -226,38 +246,34 @@ export default function BuyOption({
             tooltip="BTC must exceed this price at expiry for the buyer to profit."
           />
           <StatCell
-            label="Available"
-            value={`${availableCount} / ${totalCount}`}
-            valueClass={availableCount > 0 ? "text-green-400" : "text-gray-500"}
+            label="Total"
+            value={totalCount.toLocaleString()}
+            valueClass="text-green-400"
           />
         </div>
 
-        {/* Availability bar */}
+        {/* Listing count bar */}
         <div className="mx-6 mb-4">
-          <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all"
-              style={{ width: `${(availableCount / totalCount) * 100}%` }}
-            />
-          </div>
           <div className="flex justify-between mt-1 text-xs text-gray-500">
-            <span>{sold.length} sold</span>
-            <span>{availableCount} available</span>
+            <span>{totalCount.toLocaleString()} total options</span>
+            <span>Page {page + 1} of {totalPages}</span>
           </div>
         </div>
 
         {/* Quick Buy Button */}
         <div className="px-6 pb-5">
-          {firstAvailable && address ? (
+          {address ? (
             <button
-              onClick={() => handleBuy(firstAvailable)}
-              disabled={pendingId !== null || isExpired}
+              onClick={() => firstAvailable && handleBuy(firstAvailable)}
+              disabled={pendingId !== null || isExpired || !firstAvailable}
               className="w-full bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 disabled:from-gray-700 disabled:to-gray-700 disabled:text-gray-500 text-white font-semibold py-3 rounded-lg transition-all text-sm flex items-center justify-center gap-2 min-h-[48px] shadow-lg shadow-orange-500/10"
             >
               {pendingId !== null ? (
                 <><Spinner /> Confirming...</>
               ) : isExpired ? (
                 "Epoch Expired"
+              ) : !firstAvailable ? (
+                <><Spinner /> Finding available option...</>
               ) : (
                 <>
                   Buy Option
@@ -312,7 +328,7 @@ export default function BuyOption({
             View All Listings
           </span>
           <span className="text-xs text-gray-600">
-            {availableCount} available / {sold.length} sold
+            {totalCount.toLocaleString()} listings
           </span>
         </button>
 
@@ -328,7 +344,7 @@ export default function BuyOption({
 
             {/* Table rows */}
             <div className="divide-y divide-gray-800/30">
-              {pagedListings.map((listing) => (
+              {listings.map((listing) => (
                 <div
                   key={listing.id}
                   className={`grid grid-cols-[60px_1fr_1fr_100px] sm:grid-cols-[70px_1fr_1fr_120px] gap-2 px-6 py-2.5 text-sm items-center transition-colors hover:bg-gray-800/30 ${

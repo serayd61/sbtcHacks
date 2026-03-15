@@ -163,8 +163,9 @@ export function getListing(id: number): Promise<(Listing & { id: number }) | nul
 }
 
 /**
- * Fetch all listings in parallel chunks (fixes N+1 sequential fetch).
- * Chunks of 20 to handle 100 listings efficiently while avoiding rate-limiting.
+ * Fetch all listings in parallel chunks.
+ * WARNING: With 3000+ listings this makes thousands of API calls.
+ * Prefer getListingsPage() for UI display.
  */
 const PARALLEL_CHUNK_SIZE = 20;
 
@@ -184,6 +185,58 @@ export async function getListingsBatch(): Promise<(Listing & { id: number })[]> 
   }
 
   return items;
+}
+
+/**
+ * Fetch a page of listings by ID range. Only fetches what's needed for display.
+ * Returns { items, totalCount, sample } where sample is the first listing (for epoch params).
+ */
+export async function getListingsPage(
+  pageNum: number,
+  pageSize: number,
+): Promise<{ items: (Listing & { id: number })[]; totalCount: number; sample: (Listing & { id: number }) | null }> {
+  const totalCount = await getListingCount();
+  if (totalCount === 0) return { items: [], totalCount: 0, sample: null };
+
+  // Fetch sample listing (first one) for epoch parameters
+  const sample = await getListing(1).catch(() => null);
+
+  // Calculate page range (show newest first: highest IDs)
+  const startId = Math.max(1, totalCount - (pageNum + 1) * pageSize + 1);
+  const endId = Math.min(totalCount, totalCount - pageNum * pageSize);
+
+  if (startId > endId) return { items: [], totalCount, sample };
+
+  const ids = Array.from({ length: endId - startId + 1 }, (_, i) => startId + i);
+  const results = await Promise.all(ids.map((id) => getListing(id).catch(() => null)));
+  const items = results.filter((r): r is Listing & { id: number } => r !== null);
+
+  // Sort newest first
+  items.sort((a, b) => b.id - a.id);
+
+  return { items, totalCount, sample };
+}
+
+/**
+ * Scan backwards from the end to find the first available (unsold) listing.
+ * Stops as soon as one is found. Max ~50 API calls worst case.
+ */
+export async function findFirstAvailableListing(): Promise<(Listing & { id: number }) | null> {
+  const count = await getListingCount();
+  if (count === 0) return null;
+
+  // Scan backwards in chunks of 10
+  for (let end = count; end >= 1; end -= 10) {
+    const start = Math.max(1, end - 9);
+    const ids = Array.from({ length: end - start + 1 }, (_, i) => start + i);
+    const results = await Promise.all(ids.map((id) => getListing(id).catch(() => null)));
+    for (let i = results.length - 1; i >= 0; i--) {
+      const r = results[i];
+      if (r && !r.sold) return r;
+    }
+    // If all sold in this chunk, keep scanning
+  }
+  return null;
 }
 
 /**
