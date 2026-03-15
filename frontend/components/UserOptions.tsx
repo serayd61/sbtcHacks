@@ -92,15 +92,14 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
 
   if (loading) {
     return (
-      <div className="bg-gradient-to-br from-blue-500/5 via-gray-900 to-purple-500/5 rounded-xl p-5 border border-blue-500/20">
-        <div className="h-5 w-32 bg-gray-800 rounded animate-pulse mb-4" />
-        <div className="bg-gray-800/50 rounded-lg p-4 animate-pulse">
-          <div className="h-4 w-48 bg-gray-700 rounded mb-3" />
-          <div className="grid grid-cols-2 gap-3">
-            {[1, 2, 3, 4].map(i => (
-              <div key={i} className="h-10 bg-gray-700 rounded" />
-            ))}
-          </div>
+      <div className="bg-gray-900/80 backdrop-blur rounded-xl p-5 border border-gray-800">
+        <div className="flex items-center gap-2 mb-3">
+          <div className="h-4 w-4 bg-gray-800 rounded animate-pulse" />
+          <div className="h-4 w-28 bg-gray-800 rounded animate-pulse" />
+        </div>
+        <div className="bg-gray-800/30 rounded-lg p-3 animate-pulse">
+          <div className="h-3 w-36 bg-gray-700/50 rounded mb-2" />
+          <div className="h-8 w-full bg-gray-700/50 rounded" />
         </div>
       </div>
     );
@@ -111,18 +110,23 @@ export default function UserOptions({ address, refreshKey, onTxComplete }: UserO
   const currentPrice = oracle ? Number(oracle.price) : 0;
 
   return (
-    <div className="bg-gradient-to-br from-blue-500/5 via-gray-900 to-purple-500/5 rounded-xl p-5 border border-blue-500/20">
-      <div className="flex items-center justify-between mb-4">
+    <div className="bg-gray-900/80 backdrop-blur rounded-xl border border-gray-800 overflow-hidden">
+      <div className="flex items-center justify-between p-5 pb-3">
         <div className="flex items-center gap-2">
-          <h2 className="text-lg font-semibold text-blue-400">Your Positions</h2>
+          <span className="w-6 h-6 rounded-lg bg-blue-500/10 flex items-center justify-center">
+            <svg className="w-3.5 h-3.5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+            </svg>
+          </span>
+          <h2 className="text-sm font-semibold text-white">Your Positions</h2>
           <InfoTip text="Options you've purchased. Active options are waiting for expiry. Settled ITM options can be claimed for payout." />
         </div>
-        <span className="text-xs px-2 py-0.5 rounded-full bg-blue-900/30 text-blue-400 border border-blue-500/20 font-medium">
-          {myOptions.length} position{myOptions.length !== 1 ? "s" : ""}
+        <span className="text-[11px] px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 font-medium">
+          {myOptions.length}
         </span>
       </div>
 
-      <div className="space-y-3">
+      <div className="space-y-3 px-5 pb-5">
         {myOptions.map((opt) => (
           <OptionCard
             key={opt.id}
