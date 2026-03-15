@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { getVaultInfo, getUserInfo, getOracleInfo, getEpoch } from "@/lib/vault-calls";
+import { useEffect, useState, useCallback } from "react";
+import { getVaultInfo, getUserInfo, getOracleInfo, getEpoch, getListingCount } from "@/lib/vault-calls";
 import { getChainInfo } from "@/lib/hiro-api";
 import { formatUSD, ONE_SBTC } from "@/lib/stacks-config";
 import { estimateBlocksRemaining } from "@/lib/block-time";
@@ -22,9 +22,11 @@ export default function VaultDashboard({
   const [oracleInfo, setOracleInfo] = useState<OracleInfo | null>(null);
   const [activeEpoch, setActiveEpoch] = useState<Epoch | null>(null);
   const [currentBlock, setCurrentBlock] = useState<number | null>(null);
+  const [listingStats, setListingStats] = useState<{ total: number; sold: number } | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [retryCount, setRetryCount] = useState(0);
+  const [countdownText, setCountdownText] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,6 +55,13 @@ export default function VaultDashboard({
           setActiveEpoch(null);
         }
 
+        // Fetch listing count (single API call, non-blocking)
+        if (vault.activeEpoch && vault.currentEpochId > 0n) {
+          getListingCount().then(count => {
+            if (!cancelled) setListingStats({ total: count, sold: 0 });
+          }).catch(() => {});
+        }
+
         if (address) {
           const user = await getUserInfo(address);
           if (!cancelled) setUserInfo(user);
@@ -71,6 +80,42 @@ export default function VaultDashboard({
     load();
     return () => { cancelled = true; };
   }, [address, refreshKey, retryCount]);
+
+  // Live countdown timer — updates every second
+  useEffect(() => {
+    if (!activeEpoch || !currentBlock) return;
+    const expiryBlock = Number(activeEpoch.expiryBlock);
+    if (expiryBlock <= currentBlock) {
+      setCountdownText("Expired");
+      return;
+    }
+    const blocksRemaining = expiryBlock - currentBlock;
+    const totalSeconds = blocksRemaining * 10 * 60; // ~10 min per block
+    const startTime = Date.now();
+
+    function tick() {
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      const remaining = Math.max(0, totalSeconds - elapsed);
+      if (remaining === 0) {
+        setCountdownText("Expired");
+        return;
+      }
+      const days = Math.floor(remaining / 86400);
+      const hours = Math.floor((remaining % 86400) / 3600);
+      const mins = Math.floor((remaining % 3600) / 60);
+      const secs = remaining % 60;
+      if (days > 0) {
+        setCountdownText(`${days}d ${hours}h ${mins}m ${secs}s`);
+      } else if (hours > 0) {
+        setCountdownText(`${hours}h ${mins}m ${secs}s`);
+      } else {
+        setCountdownText(`${mins}m ${secs}s`);
+      }
+    }
+    tick();
+    const interval = setInterval(tick, 1000);
+    return () => clearInterval(interval);
+  }, [activeEpoch, currentBlock]);
 
   if (loading) {
     return (
@@ -134,9 +179,19 @@ export default function VaultDashboard({
   const sharePrice = vaultInfo ? Number(vaultInfo.sharePrice) / ONE_SBTC : 1;
   const tvlSbtc = vaultInfo ? Number(vaultInfo.totalSbtcDeposited) / ONE_SBTC : 0;
   const epochsCompleted = vaultInfo ? Number(vaultInfo.totalEpochsCompleted) : 0;
+  const currentEpochId = vaultInfo ? Number(vaultInfo.currentEpochId) : 0;
+  const isEpochActive = vaultInfo?.activeEpoch ?? false;
   const apy = epochsCompleted > 0
     ? ((sharePrice - 1) * 52 * 100).toFixed(1)
     : "0.0";
+
+  // Calculate epoch progress percentage
+  const epochProgress = activeEpoch && currentBlock
+    ? Math.min(100, Math.max(0,
+        ((currentBlock - Number(activeEpoch.startBlock)) /
+          (Number(activeEpoch.expiryBlock) - Number(activeEpoch.startBlock))) * 100
+      ))
+    : 0;
 
   return (
     <div className="space-y-4">
@@ -144,13 +199,21 @@ export default function VaultDashboard({
       <div className="bg-gray-900 rounded-xl p-6 border border-gray-800">
         <div className="flex items-center justify-between mb-5">
           <h2 className="text-lg font-semibold text-white">Vault Overview</h2>
-          <span className={`text-xs px-2.5 py-1 rounded-full font-medium ${
-            vaultInfo?.activeEpoch
-              ? "bg-green-500/10 text-green-400 border border-green-500/20"
-              : "bg-gray-800 text-gray-400 border border-gray-700"
-          }`}>
-            {vaultInfo?.activeEpoch ? "Epoch Active" : "Idle"}
-          </span>
+          <div className="flex items-center gap-2">
+            {isEpochActive && (
+              <span className="text-xs px-2.5 py-1 rounded-full font-medium bg-orange-500/10 text-orange-400 border border-orange-500/20">
+                Epoch #{currentEpochId}
+              </span>
+            )}
+            <span className={`text-xs px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5 ${
+              isEpochActive
+                ? "bg-green-500/10 text-green-400 border border-green-500/20"
+                : "bg-gray-800 text-gray-400 border border-gray-700"
+            }`}>
+              <span className={`w-1.5 h-1.5 rounded-full ${isEpochActive ? "bg-green-400 animate-pulse" : "bg-gray-500"}`} />
+              {isEpochActive ? "Live" : "Idle"}
+            </span>
+          </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatCard
@@ -170,11 +233,42 @@ export default function VaultDashboard({
             tooltip="Estimated Annual Percentage Yield based on current share price growth, extrapolated to 52 weekly epochs per year."
           />
           <StatCard
-            label="Epochs"
-            value={epochsCompleted.toString()}
-            tooltip="Total number of completed option epochs. Each epoch is one cycle of selling covered call options."
+            label="Epoch"
+            value={currentEpochId > 0 ? `#${currentEpochId}` : "—"}
+            sub={`${epochsCompleted} completed`}
+            tooltip="Current active epoch number. Each epoch is one cycle of selling covered call options (~7 days)."
           />
         </div>
+
+        {/* Live Epoch Progress Bar */}
+        {isEpochActive && activeEpoch && (
+          <div className="mt-5 pt-4 border-t border-gray-800">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-500">Epoch Progress</span>
+                {listingStats && listingStats.total > 0 && (
+                  <span className="text-xs text-gray-600">
+                    {listingStats.total} options listed
+                  </span>
+                )}
+              </div>
+              <span className="text-xs font-mono text-orange-400">
+                {countdownText || estimateBlocksRemaining(currentBlock || 0, Number(activeEpoch.expiryBlock))}
+              </span>
+            </div>
+            <div className="h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div
+                className="h-full rounded-full bg-gradient-to-r from-orange-500 to-orange-400 transition-all duration-1000"
+                style={{ width: `${epochProgress}%` }}
+              />
+            </div>
+            <div className="flex justify-between mt-1.5 text-[10px] text-gray-600">
+              <span>Block #{Number(activeEpoch.startBlock).toLocaleString()}</span>
+              <span>{epochProgress.toFixed(0)}%</span>
+              <span>Block #{Number(activeEpoch.expiryBlock).toLocaleString()}</span>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Oracle + Epoch Row */}
@@ -233,16 +327,16 @@ export default function VaultDashboard({
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-gray-500 flex items-center">
                     Time Remaining
-                    <InfoTip text="Estimated time until this epoch expires. Based on ~10 min per tenure block (Bitcoin block time)." />
+                    <InfoTip text="Live countdown until this epoch expires. Based on ~10 min per tenure block (Bitcoin block time)." />
                   </span>
-                  <span className={`text-sm font-medium ${
+                  <span className={`text-sm font-mono font-medium ${
                     currentBlock && Number(activeEpoch.expiryBlock) <= currentBlock
                       ? "text-red-400"
-                      : "text-white"
+                      : "text-orange-400"
                   }`}>
-                    {currentBlock
+                    {countdownText || (currentBlock
                       ? estimateBlocksRemaining(currentBlock, Number(activeEpoch.expiryBlock))
-                      : "-"}
+                      : "-")}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
@@ -307,11 +401,13 @@ export default function VaultDashboard({
 function StatCard({
   label,
   value,
+  sub,
   highlight,
   tooltip,
 }: {
   label: string;
   value: string;
+  sub?: string;
   highlight?: boolean;
   tooltip?: string;
 }) {
@@ -322,6 +418,7 @@ function StatCard({
         {tooltip && <InfoTip text={tooltip} />}
       </p>
       <p className={`text-lg font-semibold ${highlight ? "text-green-400" : "text-white"}`}>{value}</p>
+      {sub && <p className="text-[10px] text-gray-600 mt-0.5">{sub}</p>}
     </div>
   );
 }
