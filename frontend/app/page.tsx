@@ -9,6 +9,7 @@ import TransactionHistory from "@/components/TransactionHistory";
 import FaucetButton from "@/components/FaucetButton";
 import UserOptions from "@/components/UserOptions";
 import { IS_MAINNET } from "@/lib/stacks-config";
+import Link from "next/link";
 
 export default function DashboardPage() {
   const { address, refreshKey, refresh } = useWallet();
@@ -64,6 +65,29 @@ export default function DashboardPage() {
               ))}
             </ol>
           </div>
+
+          {/* Whitepaper CTA */}
+          <Link
+            href="/whitepaper"
+            className="group flex items-center gap-4 bg-gradient-to-br from-orange-500/10 to-amber-500/5 rounded-xl p-5 border border-orange-500/20 hover:border-orange-500/40 transition-all"
+          >
+            <div className="w-10 h-10 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0 group-hover:bg-orange-500/25 transition-colors">
+              <svg className="w-5 h-5 text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-white group-hover:text-orange-400 transition-colors">
+                Read the Whitepaper
+              </p>
+              <p className="text-xs text-gray-500 mt-0.5">
+                Architecture, pricing model, security & roadmap
+              </p>
+            </div>
+            <svg className="w-4 h-4 text-gray-600 group-hover:text-orange-400 transition-colors shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </Link>
         </div>
       </div>
 
