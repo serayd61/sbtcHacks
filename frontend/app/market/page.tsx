@@ -4,29 +4,32 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@/components/layout/Providers";
 import BuyOption from "@/components/BuyOption";
 import UserOptions from "@/components/UserOptions";
-import { getVaultInfo, getOracleInfo } from "@/lib/vault-calls";
+import { getVaultInfo, getOracleInfo, getMarketInfo } from "@/lib/vault-calls";
 import { formatSBTC, formatUSD } from "@/lib/stacks-config";
-import type { VaultInfo, OracleInfo } from "@/lib/types";
+import type { VaultInfo, OracleInfo, MarketInfo } from "@/lib/types";
 
 export default function MarketPage() {
   const { address, refreshKey, refresh } = useWallet();
   const [vaultInfo, setVaultInfo] = useState<VaultInfo | null>(null);
   const [oracle, setOracle] = useState<OracleInfo | null>(null);
+  const [marketInfo, setMarketInfo] = useState<MarketInfo | null>(null);
 
   useEffect(() => {
     Promise.all([
       getVaultInfo().catch(() => null),
       getOracleInfo().catch(() => null),
-    ]).then(([v, o]) => {
+      getMarketInfo().catch(() => null),
+    ]).then(([v, o, m]) => {
       setVaultInfo(v);
       setOracle(o);
+      setMarketInfo(m);
     });
   }, [refreshKey]);
 
   const btcPrice = oracle ? formatUSD(oracle.price) : "—";
   const tvl = vaultInfo ? formatSBTC(vaultInfo.totalSbtcDeposited) : "—";
-  const epochsCompleted = vaultInfo ? Number(vaultInfo.totalEpochsCompleted) : 0;
-  const premiumsEarned = vaultInfo ? formatSBTC(vaultInfo.totalPremiumsEarned) : "—";
+  const optionsSold = marketInfo ? Number(marketInfo.totalOptionsSold).toLocaleString() : "—";
+  const totalVolume = marketInfo ? `${formatSBTC(marketInfo.totalVolume)}` : "—";
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-6 sm:py-8">
@@ -53,8 +56,8 @@ export default function MarketPage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-8">
         <MiniStat label="BTC Price" value={btcPrice} icon="price" pulse />
         <MiniStat label="Vault TVL" value={`${tvl} sBTC`} icon="vault" />
-        <MiniStat label="Epochs Completed" value={epochsCompleted.toString()} icon="epoch" />
-        <MiniStat label="Premiums Earned" value={`${premiumsEarned} sBTC`} icon="premium" />
+        <MiniStat label="Options Sold" value={optionsSold} icon="epoch" />
+        <MiniStat label="Total Volume" value={`${totalVolume} sBTC`} icon="premium" />
       </div>
 
       {/* Main Content Grid */}

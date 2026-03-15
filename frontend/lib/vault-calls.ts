@@ -14,7 +14,7 @@ import {
 import { CONTRACTS, DEPLOYER_ADDRESS, HIRO_API_URL, network } from "./stacks-config";
 import { cached } from "./cache";
 import { withRetry } from "./retry";
-import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing, GovernanceTokenInfo, GovEntitlement, Proposal, ProtocolParams } from "./types";
+import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing, MarketInfo, GovernanceTokenInfo, GovEntitlement, Proposal, ProtocolParams } from "./types";
 
 // Direct read-only call using native fetch with retry (bypasses library encoding issues)
 async function readOnly(
@@ -131,6 +131,21 @@ export function getOracleInfo(): Promise<OracleInfo> {
       toleranceBps: BigInt(v["tolerance-bps"]?.value ?? "200"),
     };
   });
+}
+
+// ── Market info read-only call ─────────────────────────────────────
+
+export function getMarketInfo(): Promise<MarketInfo> {
+  return cached("market-info", async () => {
+    const result = await readOnly(CONTRACTS.MARKET, "get-market-info");
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v = (result as any).value.value;
+    return {
+      totalListings: BigInt(v["total-listings"].value),
+      totalOptionsSold: BigInt(v["total-options-sold"].value),
+      totalVolume: BigInt(v["total-volume"].value),
+    };
+  }, 15_000);
 }
 
 // ── Listing read-only calls ─────────────────────────────────────────

@@ -8,6 +8,7 @@ import EpochHistory from "@/components/EpochHistory";
 import TransactionHistory from "@/components/TransactionHistory";
 import FaucetButton from "@/components/FaucetButton";
 import UserOptions from "@/components/UserOptions";
+import ProtocolActivity from "@/components/ProtocolActivity";
 import { IS_MAINNET } from "@/lib/stacks-config";
 import Link from "next/link";
 
@@ -89,6 +90,11 @@ export default function DashboardPage() {
             </svg>
           </Link>
         </div>
+      </div>
+
+      {/* Protocol Activity — full width */}
+      <div className="mt-6">
+        <ProtocolActivity refreshKey={refreshKey} />
       </div>
 
       {/* User Options */}
