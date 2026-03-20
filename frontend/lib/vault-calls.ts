@@ -214,8 +214,9 @@ export async function getListingsPage(
   const totalCount = await getListingCount();
   if (totalCount === 0) return { items: [], totalCount: 0, sample: null };
 
-  // Fetch sample listing (first one) for epoch parameters
-  const sample = await getListing(1).catch(() => null);
+  // Fetch sample listing from the LATEST listing (current epoch's data)
+  // Bug fix: listing #1 is from epoch 1 — stale expiry causes "Epoch Expired" on new epochs
+  const sample = await getListing(totalCount).catch(() => null);
 
   // Calculate page range (show newest first: highest IDs)
   const startId = Math.max(1, totalCount - (pageNum + 1) * pageSize + 1);

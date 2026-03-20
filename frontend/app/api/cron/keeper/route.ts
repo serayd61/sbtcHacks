@@ -465,6 +465,26 @@ async function _DISABLED_GET_ORIGINAL(request: Request) {
               log(`Epoch #${currentEpochId} EXPIRED (expiry=${expiryBlock}, now=${tenureHeight}) — settling...`);
               if (!dryRun) {
                 try {
+                  // FIX: Ensure oracle price is fresh before settle (prevents u3013)
+                  // settle-epoch-with-oracle calls get-btc-price with 12-block staleness check
+                  if (priceSkipped) {
+                    log("Force-updating oracle before settle (was skipped due to tolerance)...");
+                    try {
+                      const forceTxId = await broadcast({
+                        contractName: CONTRACTS.oracle,
+                        functionName: "set-btc-price",
+                        functionArgs: [uintCV(onChainPrice)],
+                        senderKey: privateKey,
+                      });
+                      log(`Oracle force-updated: ${forceTxId}`);
+                      txIds.push(forceTxId);
+                    } catch (priceErr: unknown) {
+                      const priceMsg = priceErr instanceof Error ? priceErr.message : String(priceErr);
+                      log(`Oracle update failed: ${priceMsg} — skipping settle to avoid u3013`);
+                      throw new Error("Oracle stale, cannot settle");
+                    }
+                  }
+
                   const txId = await broadcast({
                     contractName: CONTRACTS.vault,
                     functionName: "settle-epoch-with-oracle",

@@ -130,6 +130,33 @@ async function settleExpiredEpoch(epochId: bigint): Promise<void> {
     return;
   }
 
+  // FIX: Update oracle price BEFORE settling to prevent u3013 (stale price)
+  // settle-epoch-with-oracle calls get-btc-price which has staleness check (12 blocks).
+  // If price wasn't updated recently, the settle TX will fail with ERR-INVALID-SETTLEMENT-PRICE.
+  console.log("  Updating oracle price before settle (prevents u3013 staleness error)...");
+  try {
+    const priceResults = await fetchAllPrices();
+    const medianPrice = calculateMedianPrice(priceResults);
+    if (medianPrice) {
+      const onChainPrice = priceToOnChain(medianPrice);
+      const priceTxId = await broadcastTx({
+        contractAddress: DEPLOYER,
+        contractName: KEEPER_CONFIG.contracts.priceOracleV2,
+        functionName: "set-btc-price",
+        functionArgs: [uintCV(onChainPrice)],
+        senderKey: privateKey,
+        anchorMode: AnchorMode.Any,
+        fee: 5000n,
+      });
+      console.log(`  Oracle price updated: $${medianPrice.toLocaleString()} → TX: ${priceTxId}`);
+    } else {
+      console.log("  WARNING: Could not get BTC price — settle may fail with u3013");
+    }
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.log(`  Oracle price update failed: ${msg} — settle may fail with u3013`);
+  }
+
   const txId = await broadcastTx({
     contractAddress: DEPLOYER,
     contractName: KEEPER_CONFIG.contracts.vaultLogicV2,
