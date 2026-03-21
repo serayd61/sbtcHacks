@@ -86,6 +86,11 @@ const CONTRACTS = [
   "advanced-options-market-v7",
   "advanced-vault-strategy-v3",
   "dynamic-strategy-selector-v1",
+  // TIER 2.3 - Enhanced Tokenomics & Governance (NEW)
+  "enhanced-governance-token-v2",
+  "yield-farming-pools-v1",
+  // TIER 2.5 - Cross-Chain Integration (NEW)
+  "cross-chain-bridge-v1",
 ];
 
 // Low fee for mainnet: base 10,000 + 2 microSTX per byte

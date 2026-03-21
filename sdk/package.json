@@ -1,0 +1,54 @@
+{
+  "name": "@sbtc-options/sdk",
+  "version": "1.0.0",
+  "description": "TypeScript SDK for sBTC Options Vault - Advanced options trading on Bitcoin",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "src",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "test": "jest",
+    "lint": "eslint src --ext .ts",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "bitcoin",
+    "sbtc",
+    "options",
+    "defi",
+    "stacks",
+    "trading",
+    "derivatives"
+  ],
+  "author": "sBTC Options Team",
+  "license": "MIT",
+  "dependencies": {
+    "@stacks/transactions": "^7.3.1",
+    "@stacks/network": "^7.3.1",
+    "@stacks/blockchain-api-client": "^7.13.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@typescript-eslint/eslint-plugin": "^6.0.0",
+    "@typescript-eslint/parser": "^6.0.0",
+    "eslint": "^8.0.0",
+    "jest": "^29.0.0",
+    "@types/jest": "^29.0.0",
+    "ts-jest": "^29.0.0",
+    "typescript": "^5.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/serayd61/sbtcHacks.git",
+    "directory": "sdk"
+  },
+  "bugs": {
+    "url": "https://github.com/serayd61/sbtcHacks/issues"
+  },
+  "homepage": "https://sbtc-options-vault.vercel.app"
+}

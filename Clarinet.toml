@@ -138,6 +138,26 @@ clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait"]
 
+# TIER 2.3 - Enhanced Tokenomics & Governance (NEW)
+[contracts.enhanced-governance-token-v2]
+path = "contracts/enhanced-governance-token-v2.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
+[contracts.yield-farming-pools-v1]
+path = "contracts/yield-farming-pools-v1.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
+# TIER 2.5 - Cross-Chain Integration (NEW)
+[contracts.cross-chain-bridge-v1]
+path = "contracts/cross-chain-bridge-v1.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
 # Phase 5 - Governance & Scaling
 [contracts.governance-token]
 path = "contracts/governance-token.clar"
