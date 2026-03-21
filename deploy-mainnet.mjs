@@ -82,6 +82,10 @@ const CONTRACTS = [
   "upgrade-manager-v1", 
   "circuit-breaker-v1",
   "insurance-fund-v2",
+  // TIER 2.1 - Advanced Options Strategies (NEW)
+  "advanced-options-market-v7",
+  "advanced-vault-strategy-v3",
+  "dynamic-strategy-selector-v1",
 ];
 
 // Low fee for mainnet: base 10,000 + 2 microSTX per byte

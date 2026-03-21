@@ -119,6 +119,25 @@ clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait"]
 
+# TIER 2.1 - Advanced Options Strategies (NEW)
+[contracts.advanced-options-market-v7]
+path = "contracts/advanced-options-market-v7.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
+
+[contracts.advanced-vault-strategy-v3]
+path = "contracts/advanced-vault-strategy-v3.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc"]
+
+[contracts.dynamic-strategy-selector-v1]
+path = "contracts/dynamic-strategy-selector-v1.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
 # Phase 5 - Governance & Scaling
 [contracts.governance-token]
 path = "contracts/governance-token.clar"
