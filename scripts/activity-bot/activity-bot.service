@@ -1,0 +1,17 @@
+[Unit]
+Description=sBTC Options Activity Bot - Daily Runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/activity-bot
+ExecStart=/usr/bin/npx tsx daily-runner.ts
+EnvironmentFile=/opt/activity-bot/.env
+TimeoutStartSec=1800
+# Restart on failure after 5 min
+Restart=on-failure
+RestartSec=300
+
+[Install]
+WantedBy=multi-user.target

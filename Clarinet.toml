@@ -78,6 +78,13 @@ clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
 
+# V6: 10K listings per epoch (replaces options-market-v5)
+[contracts.options-market-v6]
+path = "contracts/options-market-v6.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait", "mock-sbtc", "vault-logic-v2"]
+
 [contracts.admin-multisig]
 path = "contracts/admin-multisig.clar"
 clarity_version = 2
@@ -86,6 +93,28 @@ epoch = "2.5"
 # Phase 4 - Insurance Fund
 [contracts.insurance-fund]
 path = "contracts/insurance-fund.clar"
+clarity_version = 2
+epoch = "2.5"
+depends_on = ["sip-010-trait"]
+
+# TIER 1 - Institutional-Grade Security (NEW)
+[contracts.treasury-multisig-v2]
+path = "contracts/treasury-multisig-v2.clar"
+clarity_version = 2
+epoch = "2.5"
+
+[contracts.upgrade-manager-v1]
+path = "contracts/upgrade-manager-v1.clar"
+clarity_version = 2
+epoch = "2.5"
+
+[contracts.circuit-breaker-v1]
+path = "contracts/circuit-breaker-v1.clar"
+clarity_version = 2
+epoch = "2.5"
+
+[contracts.insurance-fund-v2]
+path = "contracts/insurance-fund-v2.clar"
 clarity_version = 2
 epoch = "2.5"
 depends_on = ["sip-010-trait"]

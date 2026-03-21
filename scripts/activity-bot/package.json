@@ -9,7 +9,16 @@
     "distribute": "tsx index.ts --step distribute",
     "faucet": "tsx index.ts --step faucet",
     "buy": "tsx index.ts --step buy",
-    "all": "tsx index.ts --step all"
+    "all": "tsx index.ts --step all",
+    "daily": "tsx daily-runner.ts",
+    "create-listings": "tsx create-listings.ts",
+    "gov:init": "tsx governance-bot.ts --step init",
+    "gov:distribute": "tsx governance-bot.ts --step distribute",
+    "gov:propose": "tsx governance-bot.ts --step propose",
+    "gov:vote": "tsx governance-bot.ts --step vote",
+    "gov:execute": "tsx governance-bot.ts --step execute",
+    "gov:daily": "tsx governance-bot.ts --step daily",
+    "gov:status": "tsx governance-bot.ts --step status"
   },
   "dependencies": {
     "@scure/bip39": "^1.2.0",

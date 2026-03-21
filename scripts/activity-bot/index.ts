@@ -3,7 +3,7 @@ import { BOT_CONFIG } from "./config.js";
 import { generateWallets, loadWallets, saveWallets } from "./wallet-generator.js";
 import { distributeSTX } from "./stx-distributor.js";
 import { callFaucets } from "./faucet-caller.js";
-import { buyOptions, findAvailableListings } from "./option-buyer.js";
+import { buyOptions, getListingCount } from "./option-buyer.js";
 import { sleep, clearProgress } from "./utils.js";
 
 // ============================================
@@ -108,16 +108,22 @@ async function stepBuy() {
     process.exit(1);
   }
 
-  // Find available listings
-  const listingIds = await findAvailableListings(1, walletsData.wallets.length);
+  // Use sequential listing IDs (1 to walletCount)
+  // Skip slow per-listing API check - listings were just batch-created
+  const listingCount = await getListingCount();
+  console.log(`  Total listings on market: ${listingCount}`);
 
-  if (listingIds.length < walletsData.wallets.length) {
+  if (listingCount < walletsData.wallets.length) {
     console.error(
-      `  Not enough available listings! Found ${listingIds.length}, need ${walletsData.wallets.length}`
+      `  Not enough listings! Found ${listingCount}, need ${walletsData.wallets.length}`
     );
     console.error(`  Make sure epoch has enough listings created.`);
     process.exit(1);
   }
+
+  // Assign listing IDs sequentially: wallet 0 -> listing 1, wallet 1 -> listing 2, etc.
+  const listingIds = walletsData.wallets.map((_, i) => i + 1);
+  console.log(`  Assigning listings #1 to #${walletsData.wallets.length}`);
 
   const result = await buyOptions(walletsData.wallets, listingIds);
 

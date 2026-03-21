@@ -68,6 +68,11 @@ plan:
       path: contracts/admin-multisig.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
+      contract-name: circuit-breaker-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/circuit-breaker-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
       contract-name: sip-010-trait
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/sip-010-trait.clar
@@ -91,6 +96,11 @@ plan:
       contract-name: insurance-fund
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/insurance-fund.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: insurance-fund-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/insurance-fund-v2.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
       contract-name: mock-sbtc
@@ -133,9 +143,29 @@ plan:
       path: contracts/options-market-v4.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
+      contract-name: options-market-v5
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/options-market-v5.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: options-market-v6
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/options-market-v6.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
       contract-name: price-oracle
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/price-oracle.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: treasury-multisig-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/treasury-multisig-v2.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: upgrade-manager-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/upgrade-manager-v1.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
       contract-name: vault-strategy-v1

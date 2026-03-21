@@ -1,0 +1,13 @@
+{
+  "tokensDistributed": true,
+  "paramsInitialized": true,
+  "currentProposalId": 1,
+  "lastProposalCreatedAt": "2026-03-18T16:38:10.338Z",
+  "votingProgress": {
+    "proposalId": 1,
+    "nextWalletIndex": 170,
+    "totalVoted": 134
+  },
+  "paramToggleIndex": 1,
+  "executedProposals": []
+}

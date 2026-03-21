@@ -26,3 +26,4 @@ node_modules
 # Activity bot generated files
 scripts/activity-bot/wallets.json
 scripts/activity-bot/progress.json
+scripts/activity-bot/.env

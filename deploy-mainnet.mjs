@@ -73,8 +73,15 @@ const CONTRACTS = [
   "options-market-v4",
   // V5: 100K listings per epoch (replaces options-market-v4)
   "options-market-v5",
+  // V6: 10K listings per epoch (replaces options-market-v5)
+  "options-market-v6",
   // Depends on governance-token
   "governance-voting",
+  // TIER 1 - Institutional-Grade Security (NEW)
+  "treasury-multisig-v2",
+  "upgrade-manager-v1", 
+  "circuit-breaker-v1",
+  "insurance-fund-v2",
 ];
 
 // Low fee for mainnet: base 10,000 + 2 microSTX per byte

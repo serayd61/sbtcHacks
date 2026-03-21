@@ -253,27 +253,50 @@ export function sleep(ms: number): Promise<void> {
 }
 
 export async function getSTXBalance(address: string): Promise<bigint> {
-  const res = await fetch(
-    `${BOT_CONFIG.apiUrl}/extended/v1/address/${address}/stx`
-  );
-  if (!res.ok) return 0n;
-  const data = (await res.json()) as { balance: string };
-  return BigInt(data.balance);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(
+        `${BOT_CONFIG.apiUrl}/extended/v1/address/${address}/stx`
+      );
+      if (res.status === 429) {
+        // Rate limited - wait and retry
+        await sleep(3000 * (attempt + 1));
+        continue;
+      }
+      if (!res.ok) return 0n;
+      const data = (await res.json()) as { balance: string };
+      return BigInt(data.balance);
+    } catch {
+      if (attempt < 2) await sleep(2000 * (attempt + 1));
+    }
+  }
+  return 0n;
 }
 
 export async function getTokenBalance(
   address: string,
   contractId: string
 ): Promise<bigint> {
-  const res = await fetch(
-    `${BOT_CONFIG.apiUrl}/extended/v1/address/${address}/balances`
-  );
-  if (!res.ok) return 0n;
-  const data = (await res.json()) as {
-    fungible_tokens: Record<string, { balance: string }>;
-  };
-  const key = `${contractId}::mock-sbtc`;
-  return BigInt(data.fungible_tokens?.[key]?.balance ?? "0");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const res = await fetch(
+        `${BOT_CONFIG.apiUrl}/extended/v1/address/${address}/balances`
+      );
+      if (res.status === 429) {
+        await sleep(3000 * (attempt + 1));
+        continue;
+      }
+      if (!res.ok) return 0n;
+      const data = (await res.json()) as {
+        fungible_tokens: Record<string, { balance: string }>;
+      };
+      const key = `${contractId}::mock-sbtc`;
+      return BigInt(data.fungible_tokens?.[key]?.balance ?? "0");
+    } catch {
+      if (attempt < 2) await sleep(2000 * (attempt + 1));
+    }
+  }
+  return 0n;
 }
 
 export function privateKeyToStxAddress(privateKey: string): string {
