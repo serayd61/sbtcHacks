@@ -68,19 +68,59 @@ plan:
       path: contracts/admin-multisig.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
-      contract-name: circuit-breaker-v1
-      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-      path: contracts/circuit-breaker-v1.clar
-      clarity-version: 2
-    - transaction-type: emulated-contract-publish
       contract-name: sip-010-trait
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/sip-010-trait.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
+      contract-name: price-oracle-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/price-oracle-v2.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
       contract-name: vault-data-v1
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/vault-data-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: vault-logic-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/vault-logic-v2.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: advanced-options-market-v7
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/advanced-options-market-v7.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: advanced-vault-strategy-v3
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/advanced-vault-strategy-v3.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: circuit-breaker-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/circuit-breaker-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: mock-sbtc
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/mock-sbtc.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: cross-chain-bridge-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/cross-chain-bridge-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: dynamic-strategy-selector-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/dynamic-strategy-selector-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: enhanced-governance-token-v2
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/enhanced-governance-token-v2.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
       contract-name: governance-token
@@ -103,11 +143,6 @@ plan:
       path: contracts/insurance-fund-v2.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
-      contract-name: mock-sbtc
-      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-      path: contracts/mock-sbtc.clar
-      clarity-version: 2
-    - transaction-type: emulated-contract-publish
       contract-name: sbtc-options-vault
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/sbtc-options-vault.clar
@@ -116,16 +151,6 @@ plan:
       contract-name: options-market
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/options-market.clar
-      clarity-version: 2
-    - transaction-type: emulated-contract-publish
-      contract-name: price-oracle-v2
-      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-      path: contracts/price-oracle-v2.clar
-      clarity-version: 2
-    - transaction-type: emulated-contract-publish
-      contract-name: vault-logic-v2
-      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
-      path: contracts/vault-logic-v2.clar
       clarity-version: 2
     - transaction-type: emulated-contract-publish
       contract-name: options-market-v2
@@ -162,6 +187,9 @@ plan:
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/treasury-multisig-v2.clar
       clarity-version: 2
+    epoch: '2.5'
+  - id: 1
+    transactions:
     - transaction-type: emulated-contract-publish
       contract-name: upgrade-manager-v1
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
@@ -171,5 +199,10 @@ plan:
       contract-name: vault-strategy-v1
       emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
       path: contracts/vault-strategy-v1.clar
+      clarity-version: 2
+    - transaction-type: emulated-contract-publish
+      contract-name: yield-farming-pools-v1
+      emulated-sender: ST1PQHQKV0RJXZFY1DGX8MNSNYVE3VGZJSRTPGZGM
+      path: contracts/yield-farming-pools-v1.clar
       clarity-version: 2
     epoch: '2.5'

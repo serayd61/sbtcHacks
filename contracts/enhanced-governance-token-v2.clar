@@ -432,15 +432,15 @@
 (define-public (claim-revenue-share)
   (let (
     (ve-balance (get-ve-token-balance tx-sender))
-    (total-ve-tokens (var-get total-ve-tokens))
-    (claim-info (default-to { last-claim-block: u0, total-claimed: u0, pending-revenue: u0 } 
+    (total-ve-supply (var-get total-ve-tokens))
+    (claim-info (default-to { last-claim-block: u0, total-claimed: u0, pending-revenue: u0 }
                              (map-get? revenue-claims tx-sender)))
   )
     (asserts! (> ve-balance u0) ERR-NO-STAKE)
     (asserts! (>= (- block-height (get last-claim-block claim-info)) CLAIM-COOLDOWN) ERR-CLAIM-COOLDOWN)
-    
+
     (let (
-      (user-share (if (> total-ve-tokens u0) (/ (* (var-get revenue-pool) ve-balance) total-ve-tokens) u0))
+      (user-share (if (> total-ve-supply u0) (/ (* (var-get revenue-pool) ve-balance) total-ve-supply) u0))
     )
       (asserts! (> user-share u0) ERR-INSUFFICIENT-REWARDS)
       

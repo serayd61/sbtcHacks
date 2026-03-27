@@ -68,7 +68,7 @@
 ;; Bridge configurations per network
 (define-map bridge-configs (string-ascii 16) {
   network-name: (string-ascii 16),
-  chain-id: uint,
+  network-id: uint,
   bridge-contract: (optional principal),
   min-amount: uint,
   max-amount: uint,
@@ -160,7 +160,7 @@
 
 (define-public (setup-bridge-network 
   (network-name (string-ascii 16))
-  (chain-id uint)
+  (network-id uint)
   (bridge-contract (optional principal))
   (min-amount uint)
   (max-amount uint)
@@ -174,7 +174,7 @@
     
     (map-set bridge-configs network-name {
       network-name: network-name,
-      chain-id: chain-id,
+      network-id: network-id,
       bridge-contract: bridge-contract,
       min-amount: min-amount,
       max-amount: max-amount,
@@ -190,7 +190,7 @@
     (print {
       event: "bridge-network-configured",
       network: network-name,
-      chain-id: chain-id,
+      network-id: network-id,
       min-amount: min-amount,
       max-amount: max-amount,
       fee-bps: bridge-fee-bps
@@ -272,7 +272,7 @@
         tx-type: TX-TYPE-SWAP,
         amount: amount,
         fee: (calculate-bridge-fee amount NETWORK-LIGHTNING),
-        source-token: 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.mock-sbtc,
+        source-token: .mock-sbtc,
         target-token: none,
         status: "PENDING",
         created-block: block-height,
@@ -323,18 +323,18 @@
       (asserts! (<= amount (get liquidity-available bridge-config)) ERR-INSUFFICIENT-LIQUIDITY)
       
       ;; Lock tokens in bridge contract
-      (try! (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.mock-sbtc transfer amount tx-sender (as-contract tx-sender) none))
+      (try! (contract-call? .mock-sbtc transfer amount tx-sender (as-contract tx-sender) none))
       
       ;; Record bridge transaction
       (map-set bridge-transactions bridge-id {
-        tx-id: (keccak256 (concat (unwrap-panic (to-consensus-buff? bridge-id)) target-address)),
+        tx-id: (compute-hash (concat (unwrap-panic (to-consensus-buff? bridge-id)) target-address)),
         user: tx-sender,
         source-network: "STACKS",
         target-network: target-network,
         tx-type: TX-TYPE-DEPOSIT,
         amount: amount,
         fee: bridge-fee,
-        source-token: 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.mock-sbtc,
+        source-token: .mock-sbtc,
         target-token: none,
         status: "PENDING",
         created-block: block-height,
@@ -396,7 +396,7 @@
       }))
       
       ;; Update operator stats
-      (try! (update-operator-stats operator true))
+      (unwrap-panic (update-operator-stats operator true))
       
       (print {
         event: "bridge-transaction-confirmed",
@@ -472,7 +472,7 @@
       (let ((bridge-amount (/ (* amount (get bridge-ratio farm)) u10000)))
         (if (> bridge-amount u0)
           (try! (bridge-to-l2 (get network farm) bridge-amount 0x1234567890123456789012345678901234567890 u0))
-          (ok u0)
+          u0
         )
       )
       
@@ -529,8 +529,8 @@
     op-info (let (
       (new-total (+ (get total-processed op-info) u1))
       (current-success-rate (get success-rate op-info))
-      (new-success-rate (if success 
-        (/ (* (+ (* current-success-rate (get total-processed op-info)) u10000) ) new-total)
+      (new-success-rate (if success
+        (/ (+ (* current-success-rate (get total-processed op-info)) u10000) new-total)
         (/ (* current-success-rate (get total-processed op-info)) new-total)
       ))
     )
@@ -548,7 +548,7 @@
   )
 )
 
-(define-private (keccak256 (data (buff 100)))
+(define-private (compute-hash (data (buff 100)))
   ;; Simplified hash - would use proper implementation
   0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 )

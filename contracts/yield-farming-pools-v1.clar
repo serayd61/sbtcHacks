@@ -224,7 +224,7 @@
 ;; Farming Functions
 ;; ============================================
 
-(define-public (deposit (pool-id uint) (amount uint))
+(define-public (deposit (pool-id uint) (amount uint) (token <sip-010-token>))
   (begin
     (asserts! (> amount u0) ERR-ZERO-AMOUNT)
     
@@ -254,7 +254,7 @@
         (pending-rewards (calculate-pending-rewards pool-id tx-sender))
       )
         ;; Transfer stake token
-        (try! (contract-call? (get stake-token pool) transfer amount tx-sender (as-contract tx-sender) none))
+        (try! (contract-call? token transfer amount tx-sender (as-contract tx-sender) none))
         
         ;; Update position
         (let (
@@ -279,8 +279,8 @@
           }))
           
           ;; Update stats
-          (try! (update-pool-stats pool-id amount u0))
-          (try! (update-user-stats tx-sender))
+          (unwrap-panic (update-pool-stats pool-id amount u0))
+          (unwrap-panic (update-user-stats tx-sender))
           
           (print {
             event: "deposit",
@@ -300,7 +300,7 @@
   )
 )
 
-(define-public (withdraw (pool-id uint) (amount uint))
+(define-public (withdraw (pool-id uint) (amount uint) (token <sip-010-token>))
   (begin
     (asserts! (> amount u0) ERR-ZERO-AMOUNT)
     
@@ -325,8 +325,8 @@
       )
         ;; Claim rewards first
         (if (> pending-rewards u0)
-          (try! (claim-rewards pool-id))
-          (ok u0)
+          (try! (claim-rewards pool-id token))
+          u0
         )
         
         ;; Update position
@@ -350,12 +350,12 @@
           }))
           
           ;; Transfer tokens back to user
-          (try! (as-contract (contract-call? (get stake-token pool) transfer net-amount tx-sender tx-sender none)))
+          (try! (as-contract (contract-call? token transfer net-amount tx-sender tx-sender none)))
           
           ;; Update stats
-          (try! (update-pool-stats pool-id u0 amount))
-          (try! (update-user-stats tx-sender))
-          
+          (unwrap-panic (update-pool-stats pool-id u0 amount))
+          (unwrap-panic (update-user-stats tx-sender))
+
           (print {
             event: "withdraw",
             pool-id: pool-id,
@@ -373,7 +373,7 @@
   )
 )
 
-(define-public (claim-rewards (pool-id uint))
+(define-public (claim-rewards (pool-id uint) (token <sip-010-token>))
   (begin
     (let (
       (pool (unwrap! (map-get? pools pool-id) ERR-POOL-NOT-FOUND))
@@ -388,7 +388,7 @@
         (asserts! (> pending-rewards u0) ERR-REWARDS-NOT-READY)
         
         ;; Mint reward tokens
-        (try! (contract-call? (get reward-token pool) transfer pending-rewards (as-contract tx-sender) tx-sender none))
+        (try! (contract-call? token transfer pending-rewards (as-contract tx-sender) tx-sender none))
         
         ;; Update position
         (map-set user-positions { pool-id: pool-id, user: tx-sender } (merge position {
@@ -400,7 +400,7 @@
         ;; Auto-compound if enabled
         (if (and (get auto-compound position) (>= pending-rewards (var-get compound-threshold)))
           (try! (auto-compound-rewards pool-id tx-sender pending-rewards))
-          (ok u0)
+          u0
         )
         
         (print {
@@ -554,16 +554,17 @@
 
 (define-private (calculate-pool-apy (pool-id uint))
   ;; Simplified APY calculation
-  ;; In production: (rewards per year) / (total staked) * 100
-  (let (
-    (pool (unwrap! (map-get? pools pool-id) (err u0)))
-    (daily-rewards (* (var-get sovt-per-block) u144)) ;; Blocks per day
-    (yearly-rewards (* daily-rewards u365))
-  )
-    (if (> (get total-staked pool) u0)
-      (/ (* yearly-rewards u10000) (get total-staked pool)) ;; Returns basis points
-      u0
+  (match (map-get? pools pool-id)
+    pool (let (
+      (daily-rewards (* (var-get sovt-per-block) u144))
+      (yearly-rewards (* daily-rewards u365))
     )
+      (if (> (get total-staked pool) u0)
+        (/ (* yearly-rewards u10000) (get total-staked pool))
+        u0
+      )
+    )
+    u0
   )
 )
 
