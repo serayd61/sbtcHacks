@@ -4,6 +4,8 @@
 history.txt
 
 mobile/node_modules/
+sdk/dist/
+sdk/node_modules/
 logs
 *.log
 npm-debug.log*
