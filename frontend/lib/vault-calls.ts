@@ -17,7 +17,7 @@ import { withRetry } from "./retry";
 import type { VaultInfo, UserInfo, Epoch, OracleInfo, Listing, MarketInfo, GovernanceTokenInfo, GovEntitlement, Proposal, ProtocolParams } from "./types";
 
 // Direct read-only call using native fetch with retry (bypasses library encoding issues)
-async function readOnly(
+export async function readOnly(
   contract: { address: string; name: string },
   functionName: string,
   args: ClarityValue[] = [],

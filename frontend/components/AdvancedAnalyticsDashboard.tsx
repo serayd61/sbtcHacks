@@ -153,7 +153,7 @@ export default function AdvancedAnalyticsDashboard() {
       setVolatilitySurface(mockVolSurface)
 
       // Mock P&L history
-      const mockPnL = []
+      const mockPnL: Array<{ date: string; pnl: number; cumulativePnL: number; sharpe: number; drawdown: number }> = []
       let cumulativePnL = 0
       for (let i = 0; i < 30; i++) {
         const dailyPnL = (Math.random() - 0.4) * 500 // Slight positive bias

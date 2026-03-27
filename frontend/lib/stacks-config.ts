@@ -71,6 +71,10 @@ export const CONTRACTS = {
     address: DEPLOYER_ADDRESS,
     name: "governance-voting",
   },
+  ADVANCED_OPTIONS_MARKET: {
+    address: DEPLOYER_ADDRESS,
+    name: "advanced-options-market-v7",
+  },
 } as const;
 
 export const SBTC_DECIMALS = 8;
