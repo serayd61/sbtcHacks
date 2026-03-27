@@ -21,12 +21,19 @@ Bitcoin holders have limited options for generating yield. While Ethereum has Ri
 sBTC Options Vault is a fully automated DeFi protocol where users deposit sBTC into a vault that writes covered call options. Premiums collected from option sales auto-compound into the vault's share price, generating passive yield — all fully on-chain in Clarity.
 
 **Key differentiators:**
-- 14 smart contracts deployed on Stacks mainnet
+- **29 smart contracts** deployed on Stacks mainnet (14 core + 10 tier1/tier2 + 5 governance)
 - Automated keeper bot (price oracle, epoch management, health monitoring)
+- **Institutional-grade security**: circuit breaker, treasury multisig, upgrade manager, insurance fund
+- **Advanced options**: iron condors, straddles, collars, strike ladders, Greeks tracking
+- **ML-based strategy selector**: 12-feature model with Kelly criterion allocation
+- **Enhanced tokenomics**: SOVT governance token with veToken staking, yield farming pools
+- **Cross-chain bridge**: Lightning Network + Ethereum L2 (Arbitrum, Optimism, Polygon, Base)
 - On-chain governance (sVGOV token + voting system)
 - 500+ unique wallets actively buying options
 - Black-Scholes option pricing model
-- 22 unit tests with full lifecycle coverage
+- **167 unit tests** across 10 test suites with full lifecycle coverage
+- **React Native mobile app** with biometric auth
+- **TypeScript SDK** (@sbtc-options/sdk) for protocol integration
 
 ---
 
@@ -58,7 +65,7 @@ sBTC Options Vault is a fully automated DeFi protocol where users deposit sBTC i
 
 ---
 
-## Smart Contracts (14 Deployed on Mainnet)
+## Smart Contracts (29 on Stacks Mainnet)
 
 All contracts deployed at `SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W`:
 
@@ -79,14 +86,38 @@ All contracts deployed at `SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W`:
 | `governance-voting` | On-chain DAO — proposals, token-weighted voting, 6 votable parameters | [View](https://explorer.hiro.so/txid/SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.governance-voting?chain=mainnet) |
 | `admin-multisig` | 2-of-3 multisig for admin operations | [View](https://explorer.hiro.so/txid/SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.admin-multisig?chain=mainnet) |
 
-### Legacy & Prepared
+### Tier 1 — Institutional-Grade Security
+| Contract | Description |
+|----------|-------------|
+| `circuit-breaker-v1` | Multi-level emergency protection (5 levels: NONE→WARNING→PARTIAL→EMERGENCY→SHUTDOWN) |
+| `treasury-multisig-v2` | 3-of-5 threshold multisig with 48h timelock, 8 action types |
+| `upgrade-manager-v1` | Time-locked contract upgrades (48h normal, 24h emergency) |
+| `insurance-fund-v2` | Dynamic risk management with fund ratio controls (20-50%) |
+
+### Tier 2.1 — Advanced Options Strategies
+| Contract | Description |
+|----------|-------------|
+| `advanced-options-market-v7` | Multi-strike ladders, put/call options, Greeks tracking, 100K listings/epoch |
+| `advanced-vault-strategy-v3` | Dynamic allocation: covered calls, iron condors, straddles, collars |
+| `dynamic-strategy-selector-v1` | ML-based 12-feature strategy optimization with Kelly criterion |
+
+### Tier 2.3 — Enhanced Tokenomics & Governance
+| Contract | Description |
+|----------|-------------|
+| `enhanced-governance-token-v2` | SOVT token — 1B max supply, veToken staking, liquidity mining, revenue sharing |
+| `yield-farming-pools-v1` | Multi-pool farming (20 pools), auto-compounding, boost mechanics (2.5x) |
+
+### Tier 2.5 — Cross-Chain Integration
+| Contract | Description |
+|----------|-------------|
+| `cross-chain-bridge-v1` | Lightning Network + Ethereum L2 bridge (Arbitrum, Optimism, Polygon, Base) |
+
+### Legacy
 | Contract | Status |
 |----------|--------|
 | `sbtc-options-vault` (V1) | Deployed — superseded by vault-logic-v2 |
 | `price-oracle` (V1) | Deployed — superseded by price-oracle-v2 |
-| `options-market` through `options-market-v4` | Deployed — iterative improvements |
-| `insurance-fund` | Prepared for V3 |
-| `vault-strategy-v1` | Prepared for V3 |
+| `options-market` through `options-market-v6` | Deployed — iterative scaling improvements |
 
 ---
 
