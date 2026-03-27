@@ -426,9 +426,16 @@
       (pool (unwrap! (map-get? pools pool-id) ERR-POOL-NOT-FOUND))
       (compound-fee (/ (* reward-amount (var-get compound-fee-bps)) u10000))
       (compound-amount (- reward-amount compound-fee))
+      (current-position (default-to {
+        amount: u0, boosted-shares: u0, reward-debt: u0, last-deposit: u0,
+        pending-rewards: u0, boost-multiplier: BASE-MULTIPLIER,
+        auto-compound: true, total-earned: u0
+      } (map-get? user-positions { pool-id: pool-id, user: user })))
     )
-      ;; Re-stake rewards automatically
-      (try! (deposit pool-id compound-amount))
+      ;; Re-stake rewards by updating position directly
+      (map-set user-positions { pool-id: pool-id, user: user }
+        (merge current-position { amount: (+ (get amount current-position) compound-amount) })
+      )
       
       ;; Update stats
       (let (

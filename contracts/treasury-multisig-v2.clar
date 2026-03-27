@@ -249,9 +249,9 @@
         (ok true)
       )
       error (begin
-        (map-set proposals proposal-id (merge proposal { 
-          executed: true, 
-          execution-result: (some false) 
+        (map-set proposals proposal-id (merge proposal {
+          executed: true,
+          execution-result: (some false)
         }))
         (print {
           event: "proposal-execution-failed",
@@ -260,7 +260,7 @@
           action: (get action proposal),
           error: error
         })
-        (err ERR-EXECUTION-FAILED)
+        (err u7010)
       )
     )
   )
@@ -383,7 +383,7 @@
 
 (define-read-only (get-proposal-status (proposal-id uint))
   (match (map-get? proposals proposal-id)
-    proposal {
+    proposal (some {
       proposal-id: proposal-id,
       action: (get action proposal),
       approvals: (get approvals proposal),
@@ -398,7 +398,7 @@
         (< (- block-height (get created-block proposal)) PROPOSAL-EXPIRY)
       ),
       execution-result: (get execution-result proposal)
-    }
+    })
     none
   )
 )

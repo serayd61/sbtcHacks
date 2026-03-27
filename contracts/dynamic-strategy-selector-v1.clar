@@ -238,7 +238,7 @@
           predicted-allocation: optimal-allocation,
           risk-score: risk-score,
           expected-return: expected-return,
-          features-hash: (keccak256 (concat-features features)),
+          features-hash: (hash-features (concat-features features)),
           prediction-time: block-height,
           actual-performance: none
         })
@@ -495,8 +495,8 @@
   lst ;; Return unchanged for now
 )
 
-(define-private (keccak256 (data (buff 100)))
-  ;; Placeholder hash function
+(define-private (hash-features (data (buff 100)))
+  ;; Placeholder hash function for feature hashing
   0x1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 )
 
