@@ -204,7 +204,7 @@
           (trigger-circuit-breaker 
             TRIGGER-TVL-DROP 
             LEVEL-EMERGENCY 
-            (string-concat "TVL dropped " (int-to-ascii (to-int drop-percentage)))
+            (string-concat "TVL dropped " (int-to-ascii-custom (to-int drop-percentage)))
             tx-sender
           )
           (ok false)
@@ -238,7 +238,7 @@
           (trigger-circuit-breaker 
             TRIGGER-PRICE-DEVIATION 
             LEVEL-PARTIAL 
-            (string-concat "Price deviated " (int-to-ascii (to-int deviation-percentage)))
+            (string-concat "Price deviated " (int-to-ascii-custom (to-int deviation-percentage)))
             tx-sender
           )
           (ok false)
@@ -477,7 +477,7 @@
   )
 )
 
-(define-private (int-to-ascii (value int))
+(define-private (int-to-ascii-custom (value int))
   ;; Simplified conversion - in production would need proper implementation
   "N/A"
 )

@@ -156,7 +156,7 @@ depends_on = ["sip-010-trait"]
 path = "contracts/cross-chain-bridge-v1.clar"
 clarity_version = 2
 epoch = "2.5"
-depends_on = ["sip-010-trait"]
+depends_on = ["sip-010-trait", "mock-sbtc"]
 
 # Phase 5 - Governance & Scaling
 [contracts.governance-token]

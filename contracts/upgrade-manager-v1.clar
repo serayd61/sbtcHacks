@@ -216,7 +216,7 @@
     (asserts! (is-upgrade-ready upgrade) ERR-NOT-AUTHORIZED)
     
     ;; Deactivate old implementation in history
-    (try! (deactivate-old-implementation (get contract-name upgrade) (get old-implementation upgrade)))
+    (unwrap-panic (deactivate-old-implementation (get contract-name upgrade) (get old-implementation upgrade)))
     
     ;; Activate new implementation
     (map-set current-implementations (get contract-name upgrade) (get new-implementation upgrade))
@@ -386,7 +386,7 @@
 
 (define-read-only (get-upgrade-status (upgrade-id uint))
   (match (map-get? upgrades upgrade-id)
-    upgrade {
+    upgrade (some {
       upgrade-id: upgrade-id,
       contract-name: (get contract-name upgrade),
       upgrade-type: (get upgrade-type upgrade),
@@ -407,7 +407,7 @@
         (some (- (get scheduled-block upgrade) block-height))
         none
       )
-    }
+    })
     none
   )
 )

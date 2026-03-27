@@ -102,6 +102,112 @@
 (define-map authorized-managers principal bool)
 
 ;; ============================================
+;; Authorization Helpers (must be before usage)
+;; ============================================
+(define-private (is-multisig-call (caller principal))
+  (match (var-get multisig-contract)
+    multisig (is-eq caller multisig)
+    false
+  )
+)
+
+(define-private (is-authorized-admin (caller principal))
+  (or
+    (is-eq caller CONTRACT-OWNER)
+    (is-multisig-call caller)
+  )
+)
+
+(define-private (is-authorized-manager (caller principal))
+  (or
+    (is-authorized-admin caller)
+    (default-to false (map-get? authorized-managers caller))
+  )
+)
+
+;; ============================================
+;; Internal Helpers (must be before public fns)
+;; ============================================
+(define-private (calculate-fund-ratio (vault-tvl uint))
+  (if (> vault-tvl u0)
+    (/ (* (var-get total-balance) BPS-DENOMINATOR) vault-tvl)
+    u0
+  )
+)
+
+(define-private (record-rebalance (old-ratio uint) (new-ratio uint) (amount uint) (direction (string-ascii 16)) (triggered-by principal))
+  (let ((rebalance-id (+ (var-get rebalance-count) u1)))
+    (map-set rebalance-history rebalance-id {
+      old-ratio: old-ratio,
+      new-ratio: new-ratio,
+      amount-moved: amount,
+      direction: direction,
+      triggered-by: triggered-by,
+      block-height: block-height
+    })
+    (var-set rebalance-count rebalance-id)
+    (var-set last-rebalance-block block-height)
+    (ok true)
+  )
+)
+
+(define-private (request-fund-transfer (token <sip-010-token>) (amount uint) (direction (string-ascii 16)))
+  (begin
+    (print {
+      event: "fund-transfer-requested",
+      amount: amount,
+      direction: direction
+    })
+    true
+  )
+)
+
+(define-private (transfer-to-vault (token <sip-010-token>) (amount uint))
+  (begin
+    (try! (as-contract (contract-call? token transfer amount tx-sender (var-get vault-contract) none)))
+    (var-set total-balance (- (var-get total-balance) amount))
+    (ok true)
+  )
+)
+
+(define-private (execute-rebalance (token <sip-010-token>) (vault-tvl uint) (current-ratio uint) (target-ratio uint) (triggered-by principal))
+  (let (
+    (target-amount (/ (* vault-tvl target-ratio) BPS-DENOMINATOR))
+    (current-amount (var-get total-balance))
+  )
+    (if (> target-amount current-amount)
+      (let ((deficit (- target-amount current-amount)))
+        (request-fund-transfer token deficit "to-fund")
+        (record-rebalance current-ratio target-ratio deficit "to-fund" triggered-by)
+      )
+      (let ((excess (- current-amount target-amount)))
+        (if (> excess u0)
+          (begin
+            (try! (transfer-to-vault token excess))
+            (record-rebalance current-ratio target-ratio excess "to-vault" triggered-by)
+          )
+          (ok true)
+        )
+      )
+    )
+  )
+)
+
+(define-private (check-and-rebalance (token <sip-010-token>) (vault-tvl uint))
+  (let (
+    (current-ratio (calculate-fund-ratio vault-tvl))
+  )
+    (if (or
+      (< current-ratio MIN-FUND-RATIO)
+      (> current-ratio MAX-FUND-RATIO)
+    )
+      (execute-rebalance token vault-tvl current-ratio OPTIMAL-FUND-RATIO tx-sender)
+      (ok true)
+    )
+  )
+)
+
+;; ============================================
 ;; Setup Functions
 ;; ============================================
 (define-public (set-vault-contract (vault principal))
@@ -206,7 +312,9 @@
       (asserts! (<= actual-coverage available-balance) ERR-INSUFFICIENT-BALANCE)
 
       ;; Record coverage event
-      (let ((coverage-id (+ (var-get coverage-count) u1)))
+      (let (
+        (coverage-id (+ (var-get coverage-count) u1))
+      )
         (map-set coverage-events coverage-id {
           amount: actual-coverage,
           recipient: recipient,
@@ -216,38 +324,38 @@
           fund-balance-before: available-balance
         })
         (var-set coverage-count coverage-id)
+
+        ;; Transfer from insurance fund
+        (try! (as-contract (contract-call? token transfer actual-coverage tx-sender recipient none)))
+
+        ;; Update state
+        (var-set total-balance (- available-balance actual-coverage))
+        (var-set total-payouts-covered (+ (var-get total-payouts-covered) actual-coverage))
+
+        ;; Update utilization rate
+        (let ((new-utilization (/ (* actual-coverage u10000) available-balance)))
+          (var-set utilization-rate new-utilization)
+
+          ;; Trigger circuit breaker if fund gets too low
+          (if (< (calculate-fund-ratio (var-get current-vault-tvl)) MIN-FUND-RATIO)
+            (begin (unwrap-panic (trigger-low-fund-alert)) true)
+            true
+          )
+
+          (print {
+            event: "insurance-shortfall-covered",
+            coverage-id: coverage-id,
+            requested: amount,
+            covered: actual-coverage,
+            recipient: recipient,
+            reason: reason,
+            remaining-balance: (var-get total-balance),
+            utilization-rate: new-utilization
+          })
+
+          (ok actual-coverage)
+        )
       )
-
-      ;; Transfer from insurance fund
-      (try! (as-contract (contract-call? token transfer actual-coverage tx-sender recipient none)))
-
-      ;; Update state
-      (var-set total-balance (- available-balance actual-coverage))
-      (var-set total-payouts-covered (+ (var-get total-payouts-covered) actual-coverage))
-
-      ;; Update utilization rate
-      (let ((new-utilization (/ (* actual-coverage u10000) available-balance)))
-        (var-set utilization-rate new-utilization)
-      )
-
-      ;; Trigger circuit breaker if fund gets too low
-      (if (< (calculate-fund-ratio (var-get current-vault-tvl)) MIN-FUND-RATIO)
-        (trigger-low-fund-alert)
-        (ok true)
-      )
-
-      (print {
-        event: "insurance-shortfall-covered",
-        coverage-id: coverage-id,
-        requested: amount,
-        covered: actual-coverage,
-        recipient: recipient,
-        reason: reason,
-        remaining-balance: (var-get total-balance),
-        utilization-rate: new-utilization
-      })
-
-      (ok actual-coverage)
     )
   )
 )
@@ -284,80 +392,7 @@
   )
 )
 
-(define-private (check-and-rebalance (token <sip-010-token>) (vault-tvl uint))
-  (let (
-    (current-ratio (calculate-fund-ratio vault-tvl))
-  )
-    (if (or 
-      (< current-ratio MIN-FUND-RATIO)
-      (> current-ratio MAX-FUND-RATIO)
-    )
-      (execute-rebalance token vault-tvl current-ratio OPTIMAL-FUND-RATIO tx-sender)
-      (ok true)
-    )
-  )
-)
-
-(define-private (execute-rebalance (token <sip-010-token>) (vault-tvl uint) (current-ratio uint) (target-ratio uint) (triggered-by principal))
-  (let (
-    (target-amount (/ (* vault-tvl target-ratio) BPS-DENOMINATOR))
-    (current-amount (var-get total-balance))
-  )
-    (if (> target-amount current-amount)
-      ;; Need to move funds FROM vault TO insurance fund
-      (let ((deficit (- target-amount current-amount)))
-        (request-fund-transfer token deficit "to-fund")
-        (record-rebalance current-ratio target-ratio deficit "to-fund" triggered-by)
-      )
-      ;; Need to move funds FROM insurance TO vault  
-      (let ((excess (- current-amount target-amount)))
-        (if (> excess u0)
-          (begin
-            (try! (transfer-to-vault token excess))
-            (record-rebalance current-ratio target-ratio excess "to-vault" triggered-by)
-          )
-          (ok true)
-        )
-      )
-    )
-  )
-)
-
-(define-private (transfer-to-vault (token <sip-010-token>) (amount uint))
-  (begin
-    (try! (as-contract (contract-call? token transfer amount tx-sender (var-get vault-contract) none)))
-    (var-set total-balance (- (var-get total-balance) amount))
-    (ok true)
-  )
-)
-
-(define-private (request-fund-transfer (token <sip-010-token>) (amount uint) (direction (string-ascii 16)))
-  ;; This would signal vault to transfer funds - simplified implementation
-  (begin
-    (print {
-      event: "fund-transfer-requested",
-      amount: amount,
-      direction: direction
-    })
-    true
-  )
-)
-
-(define-private (record-rebalance (old-ratio uint) (new-ratio uint) (amount uint) (direction (string-ascii 16)) (triggered-by principal))
-  (let ((rebalance-id (+ (var-get rebalance-count) u1)))
-    (map-set rebalance-history rebalance-id {
-      old-ratio: old-ratio,
-      new-ratio: new-ratio,
-      amount-moved: amount,
-      direction: direction,
-      triggered-by: triggered-by,
-      block-height: block-height
-    })
-    (var-set rebalance-count rebalance-id)
-    (var-set last-rebalance-block block-height)
-    (ok true)
-  )
-)
+;; (check-and-rebalance and helpers moved to top of file)
 
 ;; ============================================
 ;; Risk Management & Monitoring
@@ -486,33 +521,7 @@
 ;; ============================================
 ;; Helper Functions
 ;; ============================================
-(define-private (calculate-fund-ratio (vault-tvl uint))
-  (if (> vault-tvl u0)
-    (/ (* (var-get total-balance) BPS-DENOMINATOR) vault-tvl)
-    u0
-  )
-)
-
-(define-private (is-authorized-admin (caller principal))
-  (or 
-    (is-eq caller CONTRACT-OWNER)
-    (is-multisig-call caller)
-  )
-)
-
-(define-private (is-authorized-manager (caller principal))
-  (or 
-    (is-authorized-admin caller)
-    (default-to false (map-get? authorized-managers caller))
-  )
-)
-
-(define-private (is-multisig-call (caller principal))
-  (match (var-get multisig-contract)
-    multisig (is-eq caller multisig)
-    false
-  )
-)
+;; (calculate-fund-ratio moved to top of file)
 
 ;; ============================================
 ;; Read-only Functions

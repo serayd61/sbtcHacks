@@ -272,14 +272,17 @@
 (define-private (execute-action (proposal { proposer: principal, action: (string-ascii 32), target-contract: (optional principal), param-uint-1: uint, param-uint-2: uint, param-principal: (optional principal), param-string: (string-ascii 64), approvals: uint, created-block: uint, executed: bool, execution-result: (optional bool) }))
   (let ((action (get action proposal)))
     (if (is-eq action ACTION-PAUSE-VAULT)
-      (execute-pause-vault (get target-contract proposal))
+      (match (execute-pause-vault (get target-contract proposal))
+        success (ok true) error-val (err error-val))
       (if (is-eq action ACTION-UNPAUSE-VAULT)
-        (execute-unpause-vault (get target-contract proposal))
+        (match (execute-unpause-vault (get target-contract proposal))
+          success (ok true) error-val (err error-val))
         (if (is-eq action ACTION-SET-EMERGENCY-ADMIN)
           (execute-set-emergency-admin (get param-principal proposal))
           (if (is-eq action ACTION-EMERGENCY-SETTLE)
-            (execute-emergency-settle (get target-contract proposal) (get param-uint-1 proposal) (get param-uint-2 proposal))
-            (ok true) ;; Other actions can be added later
+            (match (execute-emergency-settle (get target-contract proposal) (get param-uint-1 proposal) (get param-uint-2 proposal))
+              success (ok true) error-val (err error-val))
+            (ok true)
           )
         )
       )
@@ -289,20 +292,21 @@
 
 (define-private (execute-pause-vault (vault-contract (optional principal)))
   (match vault-contract
-    contract (try! (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 set-vault-paused true))
+    contract (contract-call? .vault-logic-v2 set-vault-paused true)
     (err u404)
   )
 )
 
 (define-private (execute-unpause-vault (vault-contract (optional principal)))
   (match vault-contract
-    contract (try! (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 set-vault-paused false))
+    contract (contract-call? .vault-logic-v2 set-vault-paused false)
     (err u404)
   )
 )
 
 (define-private (execute-set-emergency-admin (new-admin (optional principal)))
   (begin
+    (asserts! true (err u500)) ;; typed err for consistent response type
     (var-set emergency-admin new-admin)
     (ok true)
   )
@@ -310,7 +314,7 @@
 
 (define-private (execute-emergency-settle (vault-contract (optional principal)) (epoch-id uint) (settlement-price uint))
   (match vault-contract
-    contract (try! (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 emergency-settle 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.mock-sbtc epoch-id settlement-price))
+    contract (contract-call? .vault-logic-v2 emergency-settle .mock-sbtc epoch-id settlement-price)
     (err u404)
   )
 )
@@ -321,7 +325,7 @@
 (define-public (emergency-pause-vault (vault-contract principal))
   (begin
     (asserts! (is-eq (some tx-sender) (var-get emergency-admin)) ERR-NOT-AUTHORIZED)
-    (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 set-vault-paused true)
+    (contract-call? .vault-logic-v2 set-vault-paused true)
   )
 )
 
