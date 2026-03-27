@@ -37,6 +37,17 @@
 (define-constant MARKET-LOW-VOL "LOW_VOL")
 
 ;; ============================================
+;; Utility functions
+;; ============================================
+(define-private (min (a uint) (b uint))
+  (if (< a b) a b)
+)
+
+(define-private (max (a uint) (b uint))
+  (if (> a b) a b)
+)
+
+;; ============================================
 ;; Errors
 ;; ============================================
 (define-constant ERR-NOT-AUTHORIZED (err u6000))
@@ -218,8 +229,8 @@
       (var-set current-market-regime market-regime)
       (var-set current-volatility-regime vol-regime)
       
-      ;; Check if rebalancing needed
-      (try! (check-and-trigger-rebalancing market-regime vol-regime))
+      ;; Check if rebalancing needed (ignore result - never fails)
+      (unwrap-panic (check-and-trigger-rebalancing market-regime vol-regime))
       
       (print {
         event: "market-conditions-updated",
@@ -278,18 +289,18 @@
       
       ;; Deploy strategies to options market
       (if (> cc-amount u0)
-        (try! (deploy-covered-calls epoch-id cc-amount))
-        (ok true)
+        (unwrap-panic (deploy-covered-calls epoch-id cc-amount))
+        true
       )
-      
+
       (if (> csp-amount u0)
-        (try! (deploy-cash-secured-puts epoch-id csp-amount))
-        (ok true)
+        (unwrap-panic (deploy-cash-secured-puts epoch-id csp-amount))
+        true
       )
-      
+
       (if (> ic-amount u0)
-        (try! (deploy-iron-condors epoch-id ic-amount))
-        (ok true)
+        (unwrap-panic (deploy-iron-condors epoch-id ic-amount))
+        true
       )
       
       (print {

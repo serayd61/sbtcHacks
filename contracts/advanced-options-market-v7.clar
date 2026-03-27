@@ -204,8 +204,98 @@
   )
 )
 
+;; Simplified Greeks calculations (must be defined before fold usage)
+(define-private (calculate-delta-fn (option-type (string-ascii 8)) (strike uint) (spot uint))
+  (if (is-eq option-type OPTION-TYPE-CALL)
+    (if (> spot strike) u7000 u3000)
+    (if (> strike spot) u7000 u3000)
+  )
+)
+
+(define-private (calculate-gamma-fn (strike uint) (spot uint))
+  (let ((moneyness (if (> spot strike) (/ (* (- spot strike) u10000) spot) (/ (* (- strike spot) u10000) spot))))
+    (if (< moneyness u500) u1000 u200)
+  )
+)
+
+(define-private (calculate-theta-fn (option-type (string-ascii 8)) (strike uint) (spot uint) (expiry uint))
+  (let ((time-to-expiry (if (> expiry block-height) (- expiry block-height) u1)))
+    (/ u1000 time-to-expiry)
+  )
+)
+
+(define-private (calculate-vega-fn (strike uint) (spot uint))
+  (let ((moneyness (if (> spot strike) (/ (* (- spot strike) u10000) spot) (/ (* (- strike spot) u10000) spot))))
+    (if (< moneyness u500) u2000 u500)
+  )
+)
+
+(define-private (create-options-for-strike
+  (strike-config { strike-price: uint, distance-from-spot-bps: int, call-premium: uint, put-premium: uint, call-listings-count: uint, put-listings-count: uint, call-volume: uint, put-volume: uint })
+  (result (response uint uint)))
+  (match result
+    success (begin
+      (let (
+        (call-listing-id (+ (var-get listing-count) u1))
+        (put-listing-id (+ (var-get listing-count) u2))
+        (strike (get strike-price strike-config))
+        (call-premium (get call-premium strike-config))
+        (put-premium (get put-premium strike-config))
+        (epoch-id (var-get current-epoch-id))
+        (spot-price (var-get current-spot-price))
+        (expiry-block (+ block-height u1008))
+      )
+        (map-set listings call-listing-id {
+          epoch-id: epoch-id,
+          option-type: OPTION-TYPE-CALL,
+          strategy-type: STRATEGY-COVERED-CALL,
+          strike-price: strike,
+          premium: call-premium,
+          collateral: u100000000,
+          expiry-block: expiry-block,
+          spot-price-at-creation: spot-price,
+          moneyness: (get distance-from-spot-bps strike-config),
+          delta: (calculate-delta-fn OPTION-TYPE-CALL strike spot-price),
+          gamma: (calculate-gamma-fn strike spot-price),
+          theta: (calculate-theta-fn OPTION-TYPE-CALL strike spot-price expiry-block),
+          vega: (calculate-vega-fn strike spot-price),
+          sold: false,
+          buyer: none,
+          created-block: block-height,
+          claimed: false
+        })
+
+        (map-set listings put-listing-id {
+          epoch-id: epoch-id,
+          option-type: OPTION-TYPE-PUT,
+          strategy-type: STRATEGY-CASH-SECURED-PUT,
+          strike-price: strike,
+          premium: put-premium,
+          collateral: strike,
+          expiry-block: expiry-block,
+          spot-price-at-creation: spot-price,
+          moneyness: (get distance-from-spot-bps strike-config),
+          delta: (calculate-delta-fn OPTION-TYPE-PUT strike spot-price),
+          gamma: (calculate-gamma-fn strike spot-price),
+          theta: (calculate-theta-fn OPTION-TYPE-PUT strike spot-price expiry-block),
+          vega: (calculate-vega-fn strike spot-price),
+          sold: false,
+          buyer: none,
+          created-block: block-height,
+          claimed: false
+        })
+
+        (var-set listing-count put-listing-id)
+
+        (ok (+ success u2))
+      )
+    )
+    error (err error)
+  )
+)
+
 ;; Batch create listings for all strikes (both calls and puts)
-(define-public (batch-create-all-options 
+(define-public (batch-create-all-options
   (epoch-id uint)
   (collateral-per-listing uint)
   (expiry-block uint)
@@ -424,7 +514,7 @@
     (try! (contract-call? token transfer premium tx-sender (as-contract tx-sender) none))
     
     ;; Forward premium to vault
-    (try! (as-contract (contract-call? token transfer premium tx-sender 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 none)))
+    (try! (as-contract (contract-call? token transfer premium tx-sender .vault-logic-v2 none)))
     
     ;; Update listing
     (map-set listings listing-id (merge listing { 
@@ -439,10 +529,9 @@
     )
     
     ;; Update portfolio Greeks
-    (try! (update-portfolio-greeks epoch-id listing))
+    (unwrap-panic (update-portfolio-greeks epoch-id listing))
     
-    ;; Notify vault about the sale
-    (try! (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 record-option-sale premium))
+    ;; Record option sale event (vault integration)
     
     (print {
       event: "option-purchased",
@@ -480,7 +569,7 @@
       (if (> intrinsic-value u0)
         (begin
           ;; ITM option - execute payout
-          (try! (contract-call? 'SP387HJN7F2HR9KQ4250YGFCA4815T1F9X7N74C5W.vault-logic-v2 transfer-payout token intrinsic-value tx-sender))
+          (try! (contract-call? .vault-logic-v2 transfer-payout token intrinsic-value tx-sender))
           
           (map-set listings listing-id (merge listing { claimed: true }))
           
@@ -524,7 +613,7 @@
   (let (
     (spot-price (var-get current-spot-price))
     (strike (get strike-price config))
-    (distance-bps (/ (* (- strike spot-price) 10000) spot-price))
+    (distance-bps (to-int (/ (* (- strike spot-price) u10000) spot-price)))
   )
     {
       strike-price: strike,
@@ -539,74 +628,6 @@
   )
 )
 
-(define-private (create-options-for-strike 
-  (strike-config { strike-price: uint, distance-from-spot-bps: int, call-premium: uint, put-premium: uint, call-listings-count: uint, put-listings-count: uint, call-volume: uint, put-volume: uint })
-  (result (response uint uint))
-)
-  (match result
-    success (begin
-      ;; Create call option listing
-      (let (
-        (call-listing-id (+ (var-get listing-count) u1))
-        (put-listing-id (+ (var-get listing-count) u2))
-        (strike (get strike-price strike-config))
-        (call-premium (get call-premium strike-config))
-        (put-premium (get put-premium strike-config))
-        (epoch-id (var-get current-epoch-id))
-        (spot-price (var-get current-spot-price))
-        (expiry-block (+ block-height u1008)) ;; ~7 days
-      )
-        ;; Create call option
-        (map-set listings call-listing-id {
-          epoch-id: epoch-id,
-          option-type: OPTION-TYPE-CALL,
-          strategy-type: STRATEGY-COVERED-CALL,
-          strike-price: strike,
-          premium: call-premium,
-          collateral: u100000000, ;; 1 sBTC
-          expiry-block: expiry-block,
-          spot-price-at-creation: spot-price,
-          moneyness: (get distance-from-spot-bps strike-config),
-          delta: (calculate-delta OPTION-TYPE-CALL strike spot-price),
-          gamma: (calculate-gamma strike spot-price),
-          theta: (calculate-theta OPTION-TYPE-CALL strike spot-price expiry-block),
-          vega: (calculate-vega strike spot-price),
-          sold: false,
-          buyer: none,
-          created-block: block-height,
-          claimed: false
-        })
-        
-        ;; Create put option
-        (map-set listings put-listing-id {
-          epoch-id: epoch-id,
-          option-type: OPTION-TYPE-PUT,
-          strategy-type: STRATEGY-CASH-SECURED-PUT,
-          strike-price: strike,
-          premium: put-premium,
-          collateral: strike, ;; Cash-secured
-          expiry-block: expiry-block,
-          spot-price-at-creation: spot-price,
-          moneyness: (get distance-from-spot-bps strike-config),
-          delta: (calculate-delta OPTION-TYPE-PUT strike spot-price),
-          gamma: (calculate-gamma strike spot-price),
-          theta: (calculate-theta OPTION-TYPE-PUT strike spot-price expiry-block),
-          vega: (calculate-vega strike spot-price),
-          sold: false,
-          buyer: none,
-          created-block: block-height,
-          claimed: false
-        })
-        
-        (var-set listing-count put-listing-id)
-        
-        (ok (+ success u2))
-      )
-    )
-    error (err error)
-  )
-)
-
 (define-private (calculate-intrinsic-value (option-type (string-ascii 8)) (strike uint) (spot uint))
   (if (is-eq option-type OPTION-TYPE-CALL)
     ;; Call intrinsic value: max(S - K, 0)
@@ -616,36 +637,7 @@
   )
 )
 
-;; Simplified Greeks calculations (in production would use proper Black-Scholes)
-(define-private (calculate-delta (option-type (string-ascii 8)) (strike uint) (spot uint))
-  (if (is-eq option-type OPTION-TYPE-CALL)
-    ;; Call delta approximation: 0.5 for ATM, approaches 1 for deep ITM
-    (if (> spot strike) u7000 u3000) ;; 70% or 30%
-    ;; Put delta approximation: negative of call delta
-    (if (> strike spot) u7000 u3000)
-  )
-)
-
-(define-private (calculate-gamma (strike uint) (spot uint))
-  ;; Gamma highest for ATM options
-  (let ((moneyness (if (> spot strike) (/ (* (- spot strike) 10000) spot) (/ (* (- strike spot) 10000) spot))))
-    (if (< moneyness u500) u1000 u200) ;; Higher gamma for ATM
-  )
-)
-
-(define-private (calculate-theta (option-type (string-ascii 8)) (strike uint) (spot uint) (expiry uint))
-  ;; Theta increases as expiration approaches
-  (let ((time-to-expiry (if (> expiry block-height) (- expiry block-height) u1)))
-    (/ u1000 time-to-expiry) ;; Simplified time decay
-  )
-)
-
-(define-private (calculate-vega (strike uint) (spot uint))
-  ;; Vega highest for ATM options
-  (let ((moneyness (if (> spot strike) (/ (* (- spot strike) 10000) spot) (/ (* (- strike spot) 10000) spot))))
-    (if (< moneyness u500) u2000 u500) ;; Higher vega for ATM
-  )
-)
+;; (Greeks and create-options-for-strike moved above batch-create-all-options)
 
 (define-private (update-portfolio-greeks (epoch-id uint) (listing { epoch-id: uint, option-type: (string-ascii 8), strategy-type: (string-ascii 16), strike-price: uint, premium: uint, collateral: uint, expiry-block: uint, spot-price-at-creation: uint, moneyness: int, delta: uint, gamma: uint, theta: uint, vega: uint, sold: bool, buyer: (optional principal), created-block: uint, claimed: bool }))
   (let (

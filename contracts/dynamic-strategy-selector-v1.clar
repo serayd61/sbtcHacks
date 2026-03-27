@@ -143,14 +143,14 @@
     (asserts! (is-eq tx-sender CONTRACT-OWNER) ERR-NOT-AUTHORIZED)
     
     (let (
-      (iv-rv-ratio (if (> rv-30d u0) (/ (* implied-vol 10000) rv-30d) 10000))
+      (iv-rv-ratio (if (> rv-30d u0) (/ (* implied-vol u10000) rv-30d) u10000))
       (bollinger-pos (calculate-bollinger-position btc-price))
       
       ;; Create feature vector
       (features (list 
         price-change-1h price-change-4h price-change-24h 
         (to-int rv-7d) (to-int rv-30d) (to-int implied-vol)
-        iv-rv-ratio (to-int rsi) bollinger-pos 
+        (to-int iv-rv-ratio) (to-int rsi) bollinger-pos
         (to-int volume-ratio) (to-int fear-greed) funding-rate
       ))
       
@@ -169,20 +169,20 @@
         realized-volatility-7d: rv-7d,
         realized-volatility-30d: rv-30d,
         implied-volatility: implied-vol,
-        iv-rv-ratio: iv-rv-ratio,
+        iv-rv-ratio: (to-int iv-rv-ratio),
         rsi-14: rsi,
         bollinger-position: bollinger-pos,
         volume-ratio: volume-ratio,
         fear-greed-index: fear-greed,
         funding-rate: funding-rate,
-        optimal-strategy: "UNKNOWN", ;; To be labeled later
+        optimal-strategy: "UNKNOWN         ", ;; To be labeled later (padded to 16 chars)
         strategy-performance: 0
       })
       
       (var-set samples-count sample-id)
       
       ;; Update regime classifications
-      (try! (classify-market-regime features))
+      (unwrap-panic (classify-market-regime features))
       
       (print {
         event: "market-features-updated",
@@ -221,7 +221,7 @@
       (prediction-id (+ epoch-id u1000000)) ;; Offset to avoid conflicts
     )
       ;; Validate confidence threshold
-      (asserts! (>= confidence LOW-CONFIDENCE-THRESHOLD) ERR-MODEL-NOT_READY)
+      (asserts! (>= confidence LOW-CONFIDENCE-THRESHOLD) ERR-MODEL-NOT-READY)
       
       ;; Calculate optimal allocation using Kelly Criterion if enabled
       (let (
@@ -327,7 +327,7 @@
     (learning-rate (if was-successful 1 -1)) ;; Simple +1/-1 adjustment
   )
     ;; Update weights based on success/failure (simplified)
-    (let ((updated-weights (map-with-index adjust-weight-by-index current-weights)))
+    (let ((updated-weights (map-with-index current-weights)))
       (var-set feature-weights updated-weights)
       (var-set model-last-trained block-height)
       (var-set model-version (+ (var-get model-version) u1))
@@ -379,7 +379,7 @@
   (if (> raw-score 500)
     { strategy: "COVERED_CALLS", reason: "Bullish prediction" }
     (if (< raw-score -500)
-      { strategy: "CASH_SECURED_PUTS", reason: "Bearish prediction" }
+      { strategy: "CASH_SECURED_PUT", reason: "Bearish prediction" }
       (if (> (abs raw-score) 200)
         { strategy: "STRADDLES", reason: "High volatility prediction" }
         { strategy: "IRON_CONDORS", reason: "Low volatility prediction" }
@@ -400,8 +400,8 @@
 
 (define-private (calculate-feature-variance (features (list 12 int)))
   ;; Simplified variance calculation
-  (let ((sum-squares (fold sum-feature-squares features 0)))
-    (/ sum-squares u12) ;; Average
+  (let ((sum-squares (fold sum-feature-squares features u0)))
+    (/ sum-squares u12)
   )
 )
 
@@ -452,7 +452,7 @@
   ;; Calculate accuracy as inverse of percentage error
   (let (
     (error (abs (- predicted actual)))
-    (error-percentage (if (> (abs predicted) 0) (/ (* error u10000) (to-uint (abs predicted))) u10000))
+    (error-percentage (if (> (to-uint (abs predicted)) u0) (to-uint (/ (* error 10000) (abs predicted))) u10000))
   )
     (if (> error-percentage u10000) u0 (- u10000 error-percentage))
   )
@@ -490,7 +490,7 @@
   (if (< weight 0) (+ weight 1) (- weight 1))
 )
 
-(define-private (map-with-index (func (int -> uint -> int)) (lst (list 12 int)))
+(define-private (map-with-index (lst (list 12 int)))
   ;; Map function with index (simplified implementation)
   lst ;; Return unchanged for now
 )
@@ -551,6 +551,6 @@
   }
 )
 
-(define-read-only (get-feature-importance (feature-name (string-ascii 32)))
-  (map-get? feature-importance feature-name)
+(define-read-only (get-feature-importance (feature-index uint))
+  (map-get? feature-importance feature-index)
 )
